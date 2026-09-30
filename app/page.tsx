@@ -1,69 +1,282 @@
-import Image from "next/image";
+﻿'use client';
+
+import { useState, useCallback, useEffect } from 'react';
+import MainMenu from '@/components/MainMenu';
+import Game from '@/components/Game';
+import HUD from '@/components/HUD';
+import CraftingMenu from '@/components/CraftingMenu';
+import GameOver from '@/components/GameOver';
+import BackgroundMusic from '@/components/BackgroundMusic';
 
 export default function Home() {
+  const [scene, setScene] = useState<'menu' | 'playing'>('menu');
+  const [gameId, setGameId] = useState(0);
+  const [health, setHealth] = useState(5);
+  const [hunger, setHunger] = useState(100);
+  const [thirst, setThirst] = useState(100);
+  const [fish, setFish] = useState(0);
+  const [day, setDay] = useState(1);
+  const [wood, setWood] = useState(0);
+  const [plastic, setPlastic] = useState(0);
+  const [raftWidth, setRaftWidth] = useState(150);
+  const [raftHealth, setRaftHealth] = useState(100);
+  const [hasRod, setHasRod] = useState(false);
+  const [hasSpear, setHasSpear] = useState(false);
+  const [hasHammer, setHasHammer] = useState(false);
+  const [hasRainBarrel, setHasRainBarrel] = useState(false);
+  const [walls, setWalls] = useState(0);
+  const [roofs, setRoofs] = useState(0);
+  const [floors, setFloors] = useState(0);
+  const [isCraftingOpen, setIsCraftingOpen] = useState(false);
+  const [craftAction, setCraftAction] = useState<{ type: string; id: number } | null>(null);
+  const [gameOver, setGameOver] = useState(false);
+  const [hasSave, setHasSave] = useState(false);
+  const [playerState, setPlayerState] = useState<'standing' | 'sitting' | 'laying'>('standing');
+  const [gameScale, setGameScale] = useState(1);
+
+  // Check for existing save on mount
+  useEffect(() => {
+    if (localStorage.getItem('raftSave')) setHasSave(true);
+  }, []);
+
+  // Compute scale to fill viewport keeping 4:3 aspect ratio
+  useEffect(() => {
+    const updateScale = () => {
+      const sx = window.innerWidth / 800;
+      const sy = window.innerHeight / 600;
+      setGameScale(Math.min(sx, sy));
+    };
+    updateScale();
+    window.addEventListener('resize', updateScale);
+    return () => window.removeEventListener('resize', updateScale);
+  }, []);
+
+  // ESC key handler
+  useEffect(() => {
+    const escHandler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && scene === 'playing' && !gameOver) {
+        setScene('menu');
+        setIsCraftingOpen(false);
+      }
+    };
+    window.addEventListener('keydown', escHandler);
+    return () => window.removeEventListener('keydown', escHandler);
+  }, [scene, gameOver]);
+
+  // Keyboard shortcuts for crafting, sit, lay
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === 'c' && scene === 'playing' && !gameOver) setIsCraftingOpen(prev => !prev);
+      if (e.key.toLowerCase() === 's' && scene === 'playing' && !gameOver) setPlayerState(prev => prev === 'sitting' ? 'standing' : 'sitting');
+      if (e.key.toLowerCase() === 'l' && scene === 'playing' && !gameOver) setPlayerState(prev => prev === 'laying' ? 'standing' : 'laying');
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [scene, gameOver]);
+
+  // Raft expansion
+  useEffect(() => {
+    if (craftAction?.type === 'EXPAND') setRaftWidth(prev => prev + 40);
+  }, [craftAction]);
+
+  const handleStatsUpdate = useCallback((stats: { health: number; hunger: number; thirst: number; fish: number; day: number; wood: number; plastic: number; raftHealth: number }) => {
+    setHealth(stats.health);
+    setHunger(stats.hunger);
+    setThirst(stats.thirst ?? 100);
+    setFish(stats.fish);
+    setDay(stats.day);
+    setWood(stats.wood);
+    setPlastic(stats.plastic);
+    setRaftHealth(stats.raftHealth ?? 100);
+  }, []);
+
+  const handleCraft = (type: string) => {
+    if (type === 'ROD') setHasRod(true);
+    if (type === 'SPEAR') setHasSpear(true);
+    if (type === 'HAMMER') setHasHammer(true);
+    if (type === 'RAIN_BARREL') setHasRainBarrel(true);
+    if (type === 'WALL') setWalls(prev => Math.min(prev + 1, 4));
+    if (type === 'ROOF') setRoofs(prev => Math.min(prev + 1, 1));
+    if (type === 'FLOOR') setFloors(prev => Math.min(prev + 1, 2));
+    setCraftAction({ type, id: Date.now() });
+  };
+
+  const handleCraftComplete = useCallback(() => setCraftAction(null), []);
+
+  const handleEat = () => {
+    if (typeof window !== 'undefined' && (window as any).__eatFishFromGame) {
+      (window as any).__eatFishFromGame();
+    }
+  };
+
+  const handleDrink = () => {
+    if (typeof window !== 'undefined' && (window as any).__drinkWaterFromGame) {
+      (window as any).__drinkWaterFromGame();
+    }
+  };
+
+  const handleAttack = () => {
+    const event = new KeyboardEvent('keydown', { key: ' ' });
+    window.dispatchEvent(event);
+    setTimeout(() => {
+      const upEvent = new KeyboardEvent('keyup', { key: ' ' });
+      window.dispatchEvent(upEvent);
+    }, 100);
+  };
+
+  const handleHook = () => {
+    const event = new KeyboardEvent('keydown', { key: 'h' });
+    window.dispatchEvent(event);
+    setTimeout(() => {
+      const upEvent = new KeyboardEvent('keyup', { key: 'h' });
+      window.dispatchEvent(upEvent);
+    }, 100);
+  };
+
+  const handleGameOver = useCallback(() => {
+    setGameOver(true);
+  }, []);
+
+  const handleRespawn = () => {
+    setGameOver(false);
+    setGameId(prev => prev + 1);
+    setHealth(5);
+    setHunger(100);
+    setThirst(100);
+    setRaftHealth(100);
+    setFish(0);
+    setDay(1);
+    setWood(0);
+    setPlastic(0);
+    setRaftWidth(150);
+    setHasRod(false);
+    setHasSpear(false);
+    setHasHammer(false);
+    setHasRainBarrel(false);
+    setWalls(0);
+    setRoofs(0);
+    setFloors(0);
+    setPlayerState('standing');
+  };
+
+  const handleSaveAndQuit = () => {
+    const saveData = {
+      health, hunger, thirst, fish, day, wood, plastic, raftWidth,
+      hasRod, hasSpear, hasHammer, hasRainBarrel, walls, roofs, floors, raftHealth,
+    };
+    localStorage.setItem('raftSave', JSON.stringify(saveData));
+    setHasSave(true);
+    setGameOver(false);
+    setScene('menu');
+  };
+
+  const handleLoadGame = () => {
+    const saved = localStorage.getItem('raftSave');
+    if (saved) {
+      const data = JSON.parse(saved);
+      setHealth(data.health);
+      setHunger(data.hunger);
+      setThirst(data.thirst ?? 100);
+      setRaftHealth(data.raftHealth ?? 100);
+      setFish(data.fish);
+      setDay(data.day);
+      setWood(data.wood);
+      setPlastic(data.plastic);
+      setRaftWidth(data.raftWidth || 150);
+      setHasRod(data.hasRod || false);
+      setHasSpear(data.hasSpear || false);
+      setHasHammer(data.hasHammer || false);
+      setHasRainBarrel(data.hasRainBarrel || false);
+      setWalls(data.walls || 0);
+      setRoofs(data.roofs || 0);
+      setFloors(data.floors || 0);
+      setGameId(prev => prev + 1);
+      setGameOver(false);
+      setPlayerState('standing');
+      setScene('playing');
+    }
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <main className="flex min-h-screen flex-col items-center justify-center bg-black relative overflow-hidden">
+      {scene === 'menu' ? (
+        <MainMenu
+          onPlay={() => { setGameOver(false); setPlayerState('standing'); setScene('playing'); }}
+          onLoad={handleLoadGame}
+          hasSave={hasSave}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
+      ) : (
+        <div
+          className="relative border-4 border-gray-800 shadow-2xl"
+          style={{
+            width: 800,
+            height: 600,
+            transform: `scale(${gameScale})`,
+            transformOrigin: 'center center',
+          }}
+        >
+          <Game
+            key={gameId}
+            onStatsUpdate={handleStatsUpdate}
+            craftAction={craftAction}
+            onCraftComplete={handleCraftComplete}
+            raftWidth={raftWidth}
+            hasRod={hasRod}
+            hasSpear={hasSpear}
+            hasHammer={hasHammer}
+            hasRainBarrel={hasRainBarrel}
+            walls={walls}
+            roofs={roofs}
+            floors={floors}
+            gameOver={gameOver}
+            onGameOver={handleGameOver}
+            playerState={playerState}
+          />
+          <HUD
+            health={health}
+            hunger={hunger}
+            thirst={thirst}
+            fish={fish}
+            day={day}
+            wood={wood}
+            plastic={plastic}
+            onOpenCrafting={() => setIsCraftingOpen(true)}
+            onEat={handleEat}
+            onDrink={handleDrink}
+            onAttack={handleAttack}
+            onHook={handleHook}
+            hasSpear={hasSpear}
+            hasRainBarrel={hasRainBarrel}
+            playerState={playerState}
+            onPoseChange={setPlayerState}
+          />
+          {isCraftingOpen && (
+            <CraftingMenu
+              onClose={() => setIsCraftingOpen(false)}
+              onCraft={handleCraft}
+              wood={wood}
+              plastic={plastic}
+              hasRod={hasRod}
+              hasSpear={hasSpear}
+              hasHammer={hasHammer}
+              hasRainBarrel={hasRainBarrel}
+              walls={walls}
+              roofs={roofs}
+              floors={floors}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+          )}
+          {gameOver && <GameOver onRespawn={handleRespawn} onSaveAndQuit={handleSaveAndQuit} />}
+          <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-12">
+            <BackgroundMusic />
+          </div>
+          <button
+            onClick={() => { setScene('menu'); setIsCraftingOpen(false); }}
+            className="absolute top-2 left-1/2 transform -translate-x-1/2 z-50 pointer-events-auto bg-black/80 hover:bg-black text-white px-4 py-2 rounded text-[12px] border-2 border-yellow-500 cursor-pointer"
           >
-            Documentation
-          </a>
+            [ESC] Main Menu
+          </button>
         </div>
-      </main>
-    </div>
+      )}
+    </main>
   );
 }
