@@ -2990,36 +2990,8 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
 
       // DARKNESS v2
       if (darkness > 0.02) {
-        var tR = 0, tG = 0, tB = 20, tA = darkness * 0.75;
-        if (darkness < 0.35) { var t1 = darkness / 0.35; tR = Math.round(255 - t1 * 200); tG = Math.round(140 - t1 * 110); tB = Math.round(80 - t1 * 20); tA = t1 * 0.35; }
-        else if (darkness < 0.65) { var t2 = (darkness - 0.35) / 0.30; tR = Math.round(55 - t2 * 45); tG = Math.round(30 - t2 * 20); tB = Math.round(60 + t2 * 30); tA = 0.35 + t2 * 0.30; }
-        else { var t3 = (darkness - 0.65) / 0.35; tR = Math.round(10 - t3 * 10); tG = Math.round(10 - t3 * 10); tB = Math.round(90 - t3 * 60); tA = 0.62 + t3 * 0.10; }
-        ctx.fillStyle = 'rgba(' + tR + ', ' + tG + ', ' + tB + ', ' + tA + ')';
+        ctx.fillStyle = 'rgba(8, 12, 35, ' + (darkness * 0.5) + ')';
         ctx.fillRect(0, 0, 800, 600);
-      }
-
-      // MOONLIGHT REFLECTION on water
-      if (!isRaining) {
-        var dayP2 = (time % (60 * 60 * 2)) / (60 * 60 * 2);
-        var isNight = dayP2 >= 0.5;
-        if (isNight && darkness > 0.3) {
-          var moonArc = (dayP2 - 0.5) * 2;
-          var moonX = 120 + moonArc * 560;
-          var reflectAlpha = Math.min(0.55, (darkness - 0.3) / 0.4 * 0.55);
-          for (var ri = 0; ri < 40; ri++) {
-            var ry = 340 + ri * 7;
-            var rw = 30 + Math.sin(time * 0.05 + ri * 0.3) * 8 + ri * 0.5;
-            var rFade = 1 - ri / 40;
-            var shimmer = Math.sin(time * 0.1 + ri * 0.8) * 0.3 + 0.7;
-            ctx.fillStyle = 'rgba(220, 235, 255, ' + (reflectAlpha * rFade * shimmer * 0.5) + ')';
-            ctx.fillRect(moonX - rw / 2, ry, rw, 3);
-          }
-          var moonGlow2 = ctx.createRadialGradient(moonX, 420, 10, moonX, 420, 180);
-          moonGlow2.addColorStop(0, 'rgba(200, 220, 255, ' + (reflectAlpha * 0.35) + ')');
-          moonGlow2.addColorStop(1, 'rgba(150, 180, 255, 0)');
-          ctx.fillStyle = moonGlow2;
-          ctx.fillRect(moonX - 180, 340, 360, 260);
-        }
       }
 
       // STARS v2 (small, twinkling, slow drift)
@@ -3048,16 +3020,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       if (fogIntensity > 0.01) {
         ctx.fillStyle = 'rgba(200, 210, 220, ' + fogIntensity + ')';
         ctx.fillRect(0, 0, 800, 600);
-        for (var fi = 0; fi < 15; fi++) {
-          var ffx = ((fi * 137 + time * 0.4) % 900) - 50;
-          var ffy = ((fi * 219 + time * 0.2) % 650) - 25;
-          var ffW = 90 + Math.sin(time * 0.02 + fi) * 25;
-          var ffA = fogIntensity * 0.4;
-          ctx.fillStyle = 'rgba(225, 230, 240, ' + ffA + ')';
-          ctx.beginPath();
-          ctx.ellipse(ffx, ffy, ffW, 45, 0, 0, Math.PI * 2);
-          ctx.fill();
-        }
+        // fog ellipses removed
         ctx.fillStyle = 'rgba(200, 210, 220, ' + (fogIntensity * 0.5) + ')';
         ctx.fillRect(0, 0, 800, 600);
       }
@@ -3138,6 +3101,11 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
     </div>
   );
 }
+
+
+
+
+
 
 
 
