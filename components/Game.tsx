@@ -23,6 +23,30 @@ type Projectile = { x: number; y: number; vx: number; vy: number; size: number; 
 type Raindrop = { x: number; y: number; length: number; speed: number; };
 type Item = { x: number; y: number; width: number; height: number; speed: number; type: 'wood' | 'plastic'; rotation: number; rotationSpeed: number; };
 type Shark = { x: number; y: number; vx: number; vy: number; width: number; height: number; speed: number; health: number; state: 'wandering' | 'attacking' | 'passing' | 'retreating'; attackTimer: number; tailPhase: number; willAttack: boolean; mouthOpen: number; };
+type TreasureChest = {
+  x: number;
+  y: number;
+  vy: number;
+  vx: number;
+  size: number;
+  rotation: number;
+  rotSpeed: number;
+  life: number;
+  glow: number;
+  opened: boolean;
+};
+type Island = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  vy: number;
+  vx: number;
+  trees: { x: number; y: number; size: number; }[];
+  rocks: { x: number; y: number; size: number; }[];
+  collected: boolean;
+  life: number;
+};
 type WaveStreak = { x: number; y: number; length: number; width: number; speed: number; alpha: number; phase: number; };
 type FishFood = { x: number; y: number; vy: number; size: number; color: string; spawnTime: number; };
 type Fish = { 
@@ -36,8 +60,10 @@ type Fish = {
   sizeCategory: 'small' | 'medium' | 'large';
   mouthOpen: number;
   eatingCooldown: number;
+  isGolden: boolean;
   targetFoodIndex: number;
   restTimer: number;
+  isGolden: boolean;
   attachFacing: number;
   graceTimer: number;
   attachSide: -1 | 1;
@@ -86,6 +112,7 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
       if (statsRef.current.wood >= 4) { statsRef.current.wood -= 4; }
     }
     // Immediately update the HUD with new resource counts
+    playCraftSound(); // __craftSoundPlayed
     onStatsUpdate({ ...statsRef.current });
     onCraftComplete();
   }, [craftAction, onCraftComplete]);
@@ -162,7 +189,212 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     };
   }, []);
 
-  const playDamageSound = () => {
+      // ===== SOUND EFFECTS (all Web Audio API) =====
+    const getAudioCtx = () => {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
+      return audioCtxRef.current;
+    };
+    const isSfxEnabled = () => {
+      if (typeof window === 'undefined') return true;
+      return (window as any).__sfxEnabled !== false;
+    };
+
+    const playFootstepSound = () => {
+      if (!isSfxEnabled()) return;
+      try {
+        const ctx = getAudioCtx();
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(150, now);
+        osc.frequency.exponentialRampToValueAtTime(60, now + 0.06);
+        gain.gain.setValueAtTime(0.06, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.1);
+      } catch (e) {}
+    };
+
+    const playChopSound = () => {
+      if (!isSfxEnabled()) return;
+      try {
+        const ctx = getAudioCtx();
+        const now = ctx.currentTime;
+        // Quick snap/crack
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(800, now);
+        osc.frequency.exponentialRampToValueAtTime(200, now + 0.1);
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.15);
+        // Wood crack (noise burst)
+        const noise = ctx.createBufferSource();
+        const buffer = ctx.createBuffer(1, ctx.sampleRate * 0.08, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.3;
+        noise.buffer = buffer;
+        const noiseGain = ctx.createGain();
+        noiseGain.gain.setValueAtTime(0.15, now);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+        noise.connect(noiseGain);
+        noiseGain.connect(ctx.destination);
+        noise.start(now);
+      } catch (e) {}
+    };
+
+    const playCraftSound = () => {
+      if (!isSfxEnabled()) return;
+      try {
+        const ctx = getAudioCtx();
+        const now = ctx.currentTime;
+        // Happy ascending arpeggio
+        [523, 659, 784].forEach((freq, i) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, now + i * 0.08);
+          gain.gain.setValueAtTime(0.12, now + i * 0.08);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.2);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now + i * 0.08);
+          osc.stop(now + i * 0.08 + 0.25);
+        });
+      } catch (e) {}
+    };
+
+    const playEatSound = () => {
+      if (!isSfxEnabled()) return;
+      try {
+        const ctx = getAudioCtx();
+        const now = ctx.currentTime;
+        // Two quick munch sounds
+        [0, 0.12].forEach((delay) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(200, now + delay);
+          osc.frequency.exponentialRampToValueAtTime(80, now + delay + 0.08);
+          gain.gain.setValueAtTime(0.1, now + delay);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.1);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now + delay);
+          osc.stop(now + delay + 0.12);
+        });
+      } catch (e) {}
+    };
+
+    const playDrinkSound = () => {
+      if (!isSfxEnabled()) return;
+      try {
+        const ctx = getAudioCtx();
+        const now = ctx.currentTime;
+        // Gulp sound (3 quick low tones)
+        [0, 0.15, 0.3].forEach((delay, i) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(120 - i * 15, now + delay);
+          osc.frequency.exponentialRampToValueAtTime(70 - i * 10, now + delay + 0.1);
+          gain.gain.setValueAtTime(0.15, now + delay);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.12);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now + delay);
+          osc.stop(now + delay + 0.15);
+        });
+      } catch (e) {}
+    };
+
+    const playSplashSound = () => {
+      if (!isSfxEnabled()) return;
+      try {
+        const ctx = getAudioCtx();
+        const now = ctx.currentTime;
+        const noise = ctx.createBufferSource();
+        const buffer = ctx.createBuffer(1, ctx.sampleRate * 0.15, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < data.length; i++) {
+          data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+        }
+        noise.buffer = buffer;
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = 1200;
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        noise.start(now);
+      } catch (e) {}
+    };
+
+        // ===== ACHIEVEMENT TRACKING =====
+    const loadAchStats = () => {
+      if (typeof window === 'undefined') return null;
+      const saved = localStorage.getItem('raftAchStats');
+      if (saved) { try { return JSON.parse(saved); } catch { return null; } }
+      return {
+        totalFishEaten: 0, totalWood: 0, totalPlastic: 0, daysSurvived: 0,
+        sharksDefeated: 0, frogsKilled: 0, maxHunger: 100, maxThirst: 100,
+        builtWalls: 0, builtRoof: 0, builtBarrel: 0, islandsCollected: 0,
+        maxRaftHealth: 100, difficulty: 'normal', timePlayed: 0,
+      };
+    };
+    const saveAchStats = (s: any) => {
+      if (typeof window === 'undefined') return;
+      localStorage.setItem('raftAchStats', JSON.stringify(s));
+    };
+    const checkAchievements = () => {
+      const stats = loadAchStats();
+      if (!stats) return;
+      // Sync current values
+      stats.daysSurvived = Math.max(stats.daysSurvived, Math.floor(time / (60 * 60 * 5)) + 1);
+      stats.maxHunger = Math.max(stats.maxHunger, statsRef.current.hunger);
+      stats.maxThirst = Math.max(stats.maxThirst, statsRef.current.thirst);
+      stats.maxRaftHealth = Math.max(stats.maxRaftHealth, statsRef.current.raftHealth);
+      stats.difficulty = diff;
+      stats.timePlayed = (stats.timePlayed || 0) + 16; // ~16ms per frame at 60fps
+
+      const unlockedList: string[] = (() => {
+        try {
+          return JSON.parse(localStorage.getItem('raftAchievements') || '[]');
+        } catch { return []; }
+      })();
+
+      const { ACHIEVEMENTS } = require('@/lib/achievements');
+      ACHIEVEMENTS.forEach((a: any) => {
+        if (!unlockedList.includes(a.id) && a.condition(stats)) {
+          unlockedList.push(a.id);
+          // Fire toast event
+          window.dispatchEvent(new CustomEvent('achievementUnlocked', {
+            detail: { emoji: a.emoji, name: a.name, description: a.description }
+          }));
+        }
+      });
+      localStorage.setItem('raftAchievements', JSON.stringify(unlockedList));
+      saveAchStats(stats);
+    };
+    // Check every 5 seconds
+    let lastAchCheck = 0;
+
+    const playThunderSound = () => { try { if (!audioCtxRef.current) { audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)(); } const ctx = audioCtxRef.current; if (ctx.state === 'suspended') ctx.resume(); const now = ctx.currentTime; const noise = ctx.createBufferSource(); const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate); const data = buf.getChannelData(0); for (let i = 0; i < data.length; i++) { const t = i / data.length; const env = Math.pow(1 - t, 1.5); data[i] = (Math.random() * 2 - 1) * env; } noise.buffer = buf; const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.setValueAtTime(180, now); filter.frequency.exponentialRampToValueAtTime(50, now + 1.8); filter.Q.value = 2; const gain = ctx.createGain(); gain.gain.setValueAtTime(0.001, now); gain.gain.exponentialRampToValueAtTime(0.35, now + 0.1); gain.gain.exponentialRampToValueAtTime(0.15, now + 0.5); gain.gain.exponentialRampToValueAtTime(0.001, now + 1.8); noise.connect(filter); filter.connect(gain); gain.connect(ctx.destination); noise.start(now); const rumble = ctx.createOscillator(); rumble.type = 'sine'; rumble.frequency.setValueAtTime(45, now); rumble.frequency.exponentialRampToValueAtTime(25, now + 1.8); const rumbleGain = ctx.createGain(); rumbleGain.gain.setValueAtTime(0.2, now); rumbleGain.gain.exponentialRampToValueAtTime(0.001, now + 1.8); rumble.connect(rumbleGain); rumbleGain.connect(ctx.destination); rumble.start(now); rumble.stop(now + 1.8); } catch (e) {} };
+
+    const playDamageSound = () => {
     try {
       if (!audioCtxRef.current) {
         audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -209,6 +441,7 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     let waveStreaks: WaveStreak[] = [];
     let wakeParticles: WakeParticle[] = [];
     let fishes: Fish[] = [];
+    let goldFishCount = 0;
     let fishFoods: FishFood[] = [];
 
     // === KEYBOARD HANDLERS ===
@@ -259,11 +492,60 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     let invulnerabilityTimer = 0;
     let lightningTimer = 0;
     let lightningFlash = 0;
+    let lightningBolt: { x: number; y: number; life: number; } | null = null;
     let isRaining = false;
     let rainTimer = 0;
     let spawnTimer = 0;
     let attackTimer = 0;
     let eatCooldown = 0;
+    let barrelWater = 0; // 0-100 — how much water is in the rain barrel
+
+    // === DIFFICULTY SETTINGS ===
+    const getDifficulty = (): 'easy' | 'normal' | 'hard' => {
+      if (typeof window === 'undefined') return 'normal';
+      const stored = localStorage.getItem('raftSettings');
+      if (stored) {
+        try {
+          return JSON.parse(stored).difficulty ?? 'normal';
+        } catch { return 'normal'; }
+      }
+      return 'normal';
+    };
+    const diff = getDifficulty();
+
+    // Difficulty multipliers
+    const DIFF = {
+      easy: {
+        hungerRate: 0.6,        // 40% slower hunger
+        thirstRate: 0.6,        // 40% slower thirst
+        damageMult: 0.5,        // Half damage from enemies
+        enemySpawnMult: 1.5,    // Enemies spawn 50% less often
+        regenBonus: 1.5,        // 50% faster HP regen
+        sharkRetreatMult: 1.5,  // Shark retreats 50% longer
+      },
+      normal: {
+        hungerRate: 1.0,
+        thirstRate: 1.0,
+        damageMult: 1.0,
+        enemySpawnMult: 1.0,
+        regenBonus: 1.0,
+        sharkRetreatMult: 1.0,
+      },
+      hard: {
+        hungerRate: 1.6,        // 60% faster hunger
+        thirstRate: 1.6,        // 60% faster thirst
+        damageMult: 1.5,        // 50% more damage
+        enemySpawnMult: 0.6,    // Enemies spawn 40% more often
+        regenBonus: 0.5,        // 50% slower regen
+        sharkRetreatMult: 0.6,  // Shark returns 40% faster
+      },
+    }[diff];
+    let islands: Island[] = [];
+    let chests: TreasureChest[] = [];
+    let clouds: { x: number; y: number; size: number; speed: number; alpha: number; vx?: number; vy?: number; }[] = [];
+    let cloudSpawnTimer = 0;
+    let splashParticles: { x: number; y: number; vx: number; vy: number; life: number; size: number; }[] = [];
+    let raftPuddles: { x: number; y: number; size: number; age: number; }[] = [];
 
     let damageFlash = 0;
     let damageCooldown = 0;
@@ -307,7 +589,9 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
       phase: Math.random() * Math.PI * 2,
     });
 
-    for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
+for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
+
+    // No clouds at start — they appear only when it rains
 
     // === INITIAL FISH BURST (so fish appear immediately on game start) ===
     // Initial fish food burst
@@ -346,6 +630,62 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
         hasAttached: false,
         wanderAngle: Math.random() * Math.PI * 2,
         wanderTimer: 0,
+      });
+    };
+
+    const spawnIsland = () => {
+      // Random size: small, medium, large
+      const roll = Math.random();
+      const w = roll < 0.5 ? 100 : roll < 0.85 ? 160 : 240;
+      const h = roll < 0.5 ? 30 : roll < 0.85 ? 40 : 55;
+      const fromLeft = Math.random() < 0.5;
+
+      const trees = [];
+      const rockCount = 2 + Math.floor(Math.random() * 3);
+      const rocks = [];
+      const treeCount = Math.floor(w / 60);
+      for (let t = 0; t < treeCount; t++) {
+        trees.push({
+          x: 15 + (t + 0.5) * ((w - 30) / treeCount) + (Math.random() - 0.5) * 10,
+          y: -8 - Math.random() * 8,
+          size: 8 + Math.random() * 6,
+        });
+      }
+      for (let r = 0; r < rockCount; r++) {
+        rocks.push({
+          x: 20 + Math.random() * (w - 40),
+          y: h - 12 - Math.random() * 6,
+          size: 4 + Math.random() * 4,
+        });
+      }
+
+      islands.push({
+        x: fromLeft ? -w - 20 : 820,
+        y: 200 + Math.random() * 250,
+        width: w,
+        height: h,
+        vx: fromLeft ? (0.4 + Math.random() * 0.3) : -(0.4 + Math.random() * 0.3),
+        vy: -(0.3 + Math.random() * 0.4),
+        trees,
+        rocks,
+        collected: false,
+        life: 2400,
+      });
+    };
+
+    const spawnChest = () => {
+      const fromLeft = Math.random() < 0.5;
+      chests.push({
+        x: fromLeft ? -40 : 840,
+        y: 250 + Math.random() * 250,
+        vx: fromLeft ? (0.6 + Math.random() * 0.4) : -(0.6 + Math.random() * 0.4),
+        vy: -(0.2 + Math.random() * 0.3),
+        size: 22,
+        rotation: 0,
+        rotSpeed: (Math.random() - 0.5) * 0.02,
+        life: 2400,
+        glow: 0,
+        opened: false,
       });
     };
 
@@ -454,10 +794,56 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
 
     const update = () => {
       if (gameOver) return;
-      time += 1;
+// ===== CLOUDS =====
+      if (isRaining && !(window as any).__wasRaining) {
+        (window as any).__wasRaining = true;
+        for (let cc = 0; cc < 6; cc++) {
+          const fromLeft = cc % 2 === 0;
+          clouds.push({
+            x: fromLeft ? -140 - Math.random() * 60 : 900 + Math.random() * 60,
+            y: 35 + Math.random() * 90,
+            size: 38,
+            speed: fromLeft ? 0.55 : -0.55,
+            alpha: 0,
+            vx: fromLeft ? 0.55 : -0.55,
+            vy: 0,
+          });
+        }
+      }
+      if (!isRaining && (window as any).__wasRaining) { (window as any).__wasRaining = false; }
+      if (isRaining && clouds.length < 8 && time % 90 === 0) {
+        const fromLeft = Math.random() < 0.5;
+        clouds.push({
+          x: fromLeft ? -140 - Math.random() * 60 : 900 + Math.random() * 60,
+          y: 35 + Math.random() * 90,
+          size: 38,
+          speed: fromLeft ? 0.55 : -0.55,
+          alpha: 0,
+          vx: fromLeft ? 0.55 : -0.55,
+          vy: 0,
+        });
+      }
+      for (let ci = clouds.length - 1; ci >= 0; ci--) {
+        const c = clouds[ci];
+        if (c.vx === undefined) c.vx = c.speed;
+        if (c.vy === undefined) c.vy = 0;
+        c.x += c.vx;
+        if (isRaining) {
+          c.y += c.vy;
+          c.alpha = Math.min(0.8, c.alpha + 0.012);
+        } else {
+          c.vy = -0.6;
+          c.y += c.vy;
+          c.alpha -= 0.005;
+        }
+        if (c.x > 1100 || c.x < -300 || c.y < -150 || c.alpha <= 0) clouds.splice(ci, 1);
+      }
+      // ===== END CLOUDS =====
+
+            time += 1;
       if (startupRiseOffset > 0) startupRiseOffset -= 2.5;
       
-      const DAY_LENGTH = 60 * 60 * 5;
+      const DAY_LENGTH = 60 * 60 * 2;
       const dayProgress = (time % DAY_LENGTH) / DAY_LENGTH;
       darkness = dayProgress > 0.5 ? (dayProgress - 0.5) * 2 : 0;
       statsRef.current.day = Math.floor(time / DAY_LENGTH) + 1;
@@ -474,7 +860,7 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
       statsRef.current.hunger -= 0.005;
       if (statsRef.current.hunger < 0) statsRef.current.hunger = 0;
       if (statsRef.current.hunger === 0) {
-        statsRef.current.health -= 0.01;
+        statsRef.current.health -= 0.003 * DIFF.damageMult;
         if (statsRef.current.health < 0) statsRef.current.health = 0;
       }
 
@@ -494,7 +880,26 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
       if (!isRaining && rainTimer > 600 + Math.random() * 600) { isRaining = true; rainTimer = 0; }
       else if (isRaining && rainTimer > 900 + Math.random() * 600) { isRaining = false; rainTimer = 0; }
       lightningTimer++;
-      if (isRaining && lightningTimer > 300 + Math.random() * 300) { lightningFlash = 1.0; lightningTimer = 0; }
+      // ===== CLOUDS =====
+      if (isRaining && !(window as any).__wasRaining) { (window as any).__wasRaining = true; for (let cc = 0; cc < 8; cc++) { const side = cc % 2; if (side === 0) clouds.push({ x: -80, y: 20 + Math.random() * 90, size: 20 + Math.random() * 10, speed: 0, alpha: 0, vx: 0.4 + Math.random() * 0.25, vy: 0 }); else if (side === 1) clouds.push({ x: 880, y: 20 + Math.random() * 90, size: 20 + Math.random() * 10, speed: 0, alpha: 0, vx: -(0.4 + Math.random() * 0.25), vy: 0 }); else clouds.push({ x: 100 + Math.random() * 600, y: -60, size: 20 + Math.random() * 10, speed: 0, alpha: 0, vx: (Math.random() - 0.5) * 0.6, vy: 1.5 + Math.random() * 0.8 }); } }
+      if (!isRaining && (window as any).__wasRaining) { (window as any).__wasRaining = false; }
+      if (isRaining && clouds.length < 14 && time % 30 === 0) { const side = Math.floor(Math.random() * 2); if (side === 0) clouds.push({ x: -80, y: 20 + Math.random() * 90, size: 20 + Math.random() * 10, speed: 0, alpha: 0, vx: 0.4 + Math.random() * 0.25, vy: 0 }); else if (side === 1) clouds.push({ x: 880, y: 20 + Math.random() * 90, size: 20 + Math.random() * 10, speed: 0, alpha: 0, vx: -(0.4 + Math.random() * 0.25), vy: 0 }); else clouds.push({ x: 100 + Math.random() * 600, y: -60, size: 20 + Math.random() * 10, speed: 0, alpha: 0, vx: (Math.random() - 0.5) * 0.6, vy: 1.5 }); }
+      for (let ci = clouds.length - 1; ci >= 0; ci--) { const c = clouds[ci]; if (c.vx === undefined) c.vx = c.speed; if (c.vy === undefined) c.vy = 0; c.x += c.vx; c.y += c.vy; if (isRaining) c.alpha = Math.min(0.85, c.alpha + 0.03); else c.alpha -= 0.02; if (c.x > 1100 || c.x < -300 || c.y > 700 || c.y < -300 || c.alpha <= 0) clouds.splice(ci, 1); }
+      // ===== END CLOUDS =====
+      if (isRaining && lightningTimer > 300 + Math.random() * 300) {
+        lightningFlash = 1.0;
+        lightningTimer = 0;
+        // Spawn a lightning bolt
+        lightningBolt = {
+          x: 100 + Math.random() * 600,
+          y: 0,
+          life: 12,
+        };
+      }
+      if (lightningBolt) {
+        lightningBolt.life--;
+        if (lightningBolt.life <= 0) lightningBolt = null;
+      }
       if (lightningFlash > 0) lightningFlash -= 0.05;
 
       // Wave streaks move UP
@@ -622,7 +1027,13 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
       if (player.y < 0) player.y = 0;
       if (player.y + player.height > 600) player.y = 600 - player.height;
 
-      if (isWalking) walkCycle += 0.3;
+      if (isWalking) {
+        walkCycle += 0.3;
+        // Play footstep every 0.4 sec (24 frames at 60fps)
+        if (Math.floor(walkCycle * 10) % 4 === 0 && time % 24 === 0) {
+          playFootstepSound();
+        }
+      }
       else walkCycle = 0;
 
       const feetX = player.x + player.width / 2;
@@ -642,8 +1053,15 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
       lastRaftY = raftScreenY;
       lastRaftX = raftScreenX;
 
-      if (isInWater) { statsRef.current.health -= 0.005; if (statsRef.current.health < 0) statsRef.current.health = 0; }
-      else { if (statsRef.current.health < 5) statsRef.current.health += 0.001; }
+      if (isInWater) {
+        statsRef.current.health -= 0.005;
+        if (statsRef.current.health < 0) statsRef.current.health = 0;
+      } else {
+        // Passive HP regen when well-fed and hydrated (not in water)
+        const wellFed = statsRef.current.hunger > 50 && statsRef.current.thirst > 50;
+        const regenRate = (wellFed ? 0.004 : 0.001) * DIFF.regenBonus;
+        if (statsRef.current.health < 5) statsRef.current.health += regenRate;
+      }
 
       if ((typeof window !== 'undefined' ? (window as any).__hasRodRef : false) && keys.F && fishingState === 'idle') {
         fishingState = 'casting'; fishingTimer = 30;
@@ -674,20 +1092,27 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
       if (eatCooldown > 0) eatCooldown--;
       if ((typeof window !== 'undefined' ? (window as any).__hasSpearRef : false) && keys.Space && attackTimer === 0) {
         attackTimer = 30;
+        playChopSound();
         for (let i = frogs.length - 1; i >= 0; i--) {
           const frog = frogs[i];
           if (frog.x < player.x + player.width + 40 && frog.x + frog.width > player.x - 20 && frog.y < player.y + player.height && frog.y + frog.height > player.y) {
             frogs.splice(i, 1);
+            const s = loadAchStats();
+            if (s) { s.frogsKilled = (s.frogsKilled || 0) + 1; saveAchStats(s); }
           }
         }
         if (shark && shark.x < player.x + 120 && shark.x + shark.width > player.x - 40) {
           shark.health--;
-          if (shark.health <= 0) { shark = null; }
+          if (shark.health <= 0) { 
+            shark = null; 
+            const s = loadAchStats();
+            if (s) { s.sharksDefeated = (s.sharksDefeated || 0) + 1; saveAchStats(s); }
+          }
           else { shark.state = 'retreating'; shark.attackTimer = 180; }
         }
       }
 
-      if (!shark && time > 1200 && Math.random() < 0.005) { spawnShark(); }
+      if (!shark && time > 1200 && Math.random() < 0.005 / DIFF.enemySpawnMult) { spawnShark(); }
       if (shark) {
         shark.tailPhase += 0.2;
         if (shark.mouthOpen > 0) shark.mouthOpen--;
@@ -779,12 +1204,12 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
               console.log('[SHARK BITE] safeLeft=' + safeLeft.toFixed(0) + ' safeRight=' + safeRight.toFixed(0) + ' inSafe=' + inSafeMiddle);
               
               if (isInWater) {
-                statsRef.current.health -= 1;
+                statsRef.current.health -= 0.7 * DIFF.damageMult;
                 if (statsRef.current.health < 0) statsRef.current.health = 0;
                 shark.mouthOpen = 40;
                 console.log('[SHARK BITE] Player in water - BIT!');
               } else if (!inSafeMiddle) {
-                statsRef.current.health -= 1;
+                statsRef.current.health -= 0.7 * DIFF.damageMult;
                 if (statsRef.current.health < 0) statsRef.current.health = 0;
                 shark.mouthOpen = 40;
                 console.log('[SHARK BITE] Player at EDGE - BIT!');
@@ -798,7 +1223,7 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
               console.log('[SHARK BITE] Player out of range - nothing');
             }
             shark.state = 'retreating';
-            shark.attackTimer = 120;
+            shark.attackTimer = Math.floor(480 * DIFF.sharkRetreatMult);
             const ang = Math.atan2(sCY - raftCY, sCX - raftCX);
             shark.vx = Math.cos(ang) * shark.speed * 1.5;
             shark.vy = Math.sin(ang) * shark.speed * 1.5;
@@ -1077,7 +1502,7 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
         }
       }
 
-      if (time % 240 === 0 && frogs.length < 4) spawnFrog();
+      if (time % Math.floor(480 * DIFF.enemySpawnMult) === 0 && frogs.length < 3) spawnFrog();
       for (let i = frogs.length - 1; i >= 0; i--) {
         const frog = frogs[i];
         frog.hopPhase += 0.15;
@@ -1090,8 +1515,8 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
         if (frog.x < player.x + player.width && frog.x + frog.width > player.x &&
             frog.y < player.y + player.height && frog.y + frog.height > player.y) {
           if (invulnerabilityTimer <= 0) {
-            statsRef.current.health -= 1;
-            invulnerabilityTimer = 60;
+            statsRef.current.health -= 0.5;
+            invulnerabilityTimer = 90;
             if (statsRef.current.health < 0) statsRef.current.health = 0;
           }
         }
@@ -1101,7 +1526,7 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
       for (let i = projectiles.length - 1; i >= 0; i--) {
         const proj = projectiles[i]; proj.x += proj.vx; proj.y += proj.vy - WORLD_SCROLL_SPEED * 0.5;
         if (proj.x < player.x + player.width && proj.x + proj.size > player.x && proj.y < player.y + player.height && proj.y + proj.size > player.y) {
-          if (invulnerabilityTimer <= 0) { statsRef.current.health -= 1; invulnerabilityTimer = 60; if (statsRef.current.health < 0) statsRef.current.health = 0; }
+          if (invulnerabilityTimer <= 0) { statsRef.current.health -= 1; invulnerabilityTimer = 120; if (statsRef.current.health < 0) statsRef.current.health = 0; }
           projectiles.splice(i, 1); continue;
         }
         if (proj.x < -50 || proj.x > 850 || proj.y < -50 || proj.y > 650) projectiles.splice(i, 1);
@@ -1129,12 +1554,301 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
                           item.y + item.height > player.y;
         
         if (raftHit || playerHit) {
-          statsRef.current[item.type]++; items.splice(i, 1); continue;
+          statsRef.current[item.type]++;
+          if (item.type === 'wood') {
+            const s = loadAchStats();
+            if (s) { s.totalWood = (s.totalWood || 0) + 1; saveAchStats(s); }
+          } else if (item.type === 'plastic') {
+            const s = loadAchStats();
+            if (s) { s.totalPlastic = (s.totalPlastic || 0) + 1; saveAchStats(s); }
+          } items.splice(i, 1); continue;
         }
         if (item.y > 640) items.splice(i, 1);
       }
 
       if (time - lastStatsUpdate > 10) { onStatsUpdate({ ...statsRef.current }); lastStatsUpdate = time; }
+    };
+
+    const drawChest = (ch: TreasureChest) => {
+      const cx = ch.x;
+      const cy = ch.y;
+      const s = ch.size;
+
+      // Underwater shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath();
+      ctx.ellipse(cx, cy + s + 4, s * 0.9, s * 0.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(ch.rotation * 0.3); // slight tilt only
+
+      // === Glow aura (pulsing) ===
+      const glowGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, s * 1.8);
+      glowGrad.addColorStop(0, "rgba(255, 215, 0, " + (0.5 * ch.glow) + ")");
+      glowGrad.addColorStop(0.5, "rgba(255, 200, 50, " + (0.2 * ch.glow) + ")");
+      glowGrad.addColorStop(1, "rgba(255, 180, 0, 0)");
+      ctx.fillStyle = glowGrad;
+      ctx.beginPath();
+      ctx.arc(0, 0, s * 1.8, 0, Math.PI * 2);
+      ctx.fill();
+
+      // === Chest body (bottom half) ===
+      ctx.fillStyle = '#8B4513';
+      ctx.fillRect(-s * 0.85, -s * 0.1, s * 1.7, s * 0.9);
+
+      // Wood plank lines
+      ctx.strokeStyle = '#5D3A0F';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-s * 0.85, s * 0.2); ctx.lineTo(s * 0.85, s * 0.2);
+      ctx.moveTo(-s * 0.85, s * 0.5); ctx.lineTo(s * 0.85, s * 0.5);
+      ctx.stroke();
+
+      // === Chest lid (top half — arched) ===
+      ctx.fillStyle = '#A0522D';
+      ctx.beginPath();
+      ctx.moveTo(-s * 0.85, -s * 0.1);
+      ctx.quadraticCurveTo(0, -s * 0.9, s * 0.85, -s * 0.1);
+      ctx.closePath();
+      ctx.fill();
+
+      // Lid highlight
+      ctx.fillStyle = '#C67B4A';
+      ctx.beginPath();
+      ctx.moveTo(-s * 0.7, -s * 0.15);
+      ctx.quadraticCurveTo(0, -s * 0.7, s * 0.5, -s * 0.2);
+      ctx.quadraticCurveTo(0, -s * 0.4, -s * 0.7, -s * 0.15);
+      ctx.closePath();
+      ctx.fill();
+
+      // === Gold straps ===
+      ctx.fillStyle = '#FFD700';
+      ctx.fillRect(-s * 0.9, -s * 0.1, s * 0.15, s * 0.9);
+      ctx.fillRect(s * 0.75, -s * 0.1, s * 0.15, s * 0.9);
+      // Top strap on lid
+      ctx.beginPath();
+      ctx.moveTo(-s * 0.08, -s * 0.85);
+      ctx.lineTo(s * 0.08, -s * 0.85);
+      ctx.lineTo(s * 0.08, -s * 0.1);
+      ctx.lineTo(-s * 0.08, -s * 0.1);
+      ctx.closePath();
+      ctx.fill();
+
+      // === Lock (gold) ===
+      ctx.fillStyle = '#B8860B';
+      ctx.beginPath();
+      ctx.arc(0, -s * 0.05, s * 0.22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#FFD700';
+      ctx.beginPath();
+      ctx.arc(0, -s * 0.05, s * 0.15, 0, Math.PI * 2);
+      ctx.fill();
+      // Keyhole
+      ctx.fillStyle = '#5D3A0F';
+      ctx.beginPath();
+      ctx.arc(0, -s * 0.1, s * 0.06, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillRect(-s * 0.03, -s * 0.08, s * 0.06, s * 0.15);
+
+      // === Sparkles around chest ===
+      for (let sp = 0; sp < 4; sp++) {
+        const ang = time * 0.03 + sp * (Math.PI / 2);
+        const dist = s * 1.5;
+        const sx = Math.cos(ang) * dist;
+        const sy = Math.sin(ang) * dist * 0.6;
+        const alpha = (Math.sin(time * 0.1 + sp) + 1) * 0.5;
+        ctx.fillStyle = "rgba(255, 255, 200, " + alpha + ")";
+        ctx.beginPath();
+        ctx.arc(sx, sy, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.restore();
+
+      // Floating "?" hint above chest
+      if (!ch.opened) {
+        ctx.font = 'bold 14px "Press Start 2P", monospace';
+        ctx.textAlign = 'center';
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 3;
+        ctx.strokeText('★', cx, cy - s * 1.5);
+        ctx.fillStyle = '#FFD700';
+        ctx.fillText('★', cx, cy - s * 1.5);
+        ctx.textAlign = 'start';
+      }
+    };
+
+    const drawCloud = (c: { x: number; y: number; size: number; alpha: number; vx?: number; vy?: number; speed: number; }) => {
+      const cx = c.x;
+      const cy = c.y;
+      const s = c.size;
+      const a = c.alpha;
+      if (a <= 0.02) return;
+
+      // Soft dark base (shadow)
+      ctx.fillStyle = "rgba(90, 105, 125, " + (a * 0.85) + ")";
+      ctx.beginPath();
+      ctx.ellipse(cx, cy + s * 0.15, s * 0.95, s * 0.35, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Mid gray (main body)
+      ctx.fillStyle = "rgba(150, 160, 175, " + a + ")";
+      ctx.beginPath();
+      ctx.ellipse(cx - s * 0.35, cy + s * 0.05, s * 0.5, s * 0.4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(cx + s * 0.3, cy + s * 0.05, s * 0.55, s * 0.42, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(cx, cy - s * 0.05, s * 0.65, s * 0.45, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Lighter top bumps (higher)
+      ctx.fillStyle = "rgba(200, 210, 225, " + a + ")";
+      ctx.beginPath();
+      ctx.ellipse(cx - s * 0.3, cy - s * 0.2, s * 0.35, s * 0.3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(cx + s * 0.05, cy - s * 0.28, s * 0.45, s * 0.32, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(cx + s * 0.4, cy - s * 0.15, s * 0.3, s * 0.25, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Bright highlight top
+      ctx.fillStyle = "rgba(245, 250, 255, " + (a * 0.9) + ")";
+      ctx.beginPath();
+      ctx.ellipse(cx + s * 0.05, cy - s * 0.35, s * 0.28, s * 0.14, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Soft bottom drips
+      ctx.fillStyle = "rgba(120, 135, 155, " + (a * 0.4) + ")";
+      for (let i = -1; i <= 1; i++) {
+        ctx.beginPath();
+        ctx.ellipse(cx + i * s * 0.35, cy + s * 0.3, s * 0.18, s * 0.1, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    };
+
+    const drawIsland = (isl: Island) => {
+      const ix = isl.x;
+      const iy = isl.y;
+      const iw = isl.width;
+      const ih = isl.height;
+
+      // === Water shadow / reflection below island ===
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+      ctx.beginPath();
+      ctx.ellipse(ix + iw / 2, iy + ih + 6, iw / 2, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // === Island base (rocky/earthy) ===
+      // Bottom (darker)
+      ctx.fillStyle = '#6B4423';
+      ctx.beginPath();
+      ctx.moveTo(ix + 8, iy + ih);
+      ctx.lineTo(ix + iw - 8, iy + ih);
+      ctx.lineTo(ix + iw - 15, iy + ih - 12);
+      ctx.lineTo(ix + 15, iy + ih - 12);
+      ctx.closePath();
+      ctx.fill();
+
+      // Middle (light dirt)
+      ctx.fillStyle = '#A0522D';
+      ctx.beginPath();
+      ctx.moveTo(ix + 15, iy + ih - 12);
+      ctx.lineTo(ix + iw - 15, iy + ih - 12);
+      ctx.lineTo(ix + iw - 20, iy + ih - 20);
+      ctx.lineTo(ix + 20, iy + ih - 20);
+      ctx.closePath();
+      ctx.fill();
+
+      // Top grass layer
+      ctx.fillStyle = '#4CAF50';
+      ctx.beginPath();
+      ctx.moveTo(ix + 20, iy + ih - 20);
+      ctx.lineTo(ix + iw - 20, iy + ih - 20);
+      ctx.lineTo(ix + iw - 30, iy + ih - 28);
+      ctx.lineTo(ix + 30, iy + ih - 28);
+      ctx.closePath();
+      ctx.fill();
+
+      // Top grass highlight
+      ctx.fillStyle = '#66BB6A';
+      ctx.beginPath();
+      ctx.moveTo(ix + 30, iy + ih - 28);
+      ctx.lineTo(ix + iw - 30, iy + ih - 28);
+      ctx.lineTo(ix + iw - 35, iy + ih - 32);
+      ctx.lineTo(ix + 35, iy + ih - 32);
+      ctx.closePath();
+      ctx.fill();
+
+      // Grass tufts (small bumps)
+      ctx.fillStyle = '#388E3C';
+      for (let i = 0; i < 8; i++) {
+        const gx = ix + 30 + (iw - 60) * (i / 7);
+        ctx.beginPath();
+        ctx.moveTo(gx, iy + ih - 32);
+        ctx.lineTo(gx + 3, iy + ih - 36);
+        ctx.lineTo(gx + 6, iy + ih - 32);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // === Trees ===
+      isl.trees.forEach((tree) => {
+        const tx = ix + tree.x;
+        const ty = iy + ih - 32 + tree.y;
+        // Trunk
+        ctx.fillStyle = '#5D4037';
+        ctx.fillRect(tx - 2, ty, 4, tree.size);
+        // Foliage (triangle pine)
+        ctx.fillStyle = '#2E7D32';
+        ctx.beginPath();
+        ctx.moveTo(tx, ty - tree.size * 0.8);
+        ctx.lineTo(tx + tree.size * 0.7, ty);
+        ctx.lineTo(tx - tree.size * 0.7, ty);
+        ctx.closePath();
+        ctx.fill();
+        // Foliage highlight
+        ctx.fillStyle = '#4CAF50';
+        ctx.beginPath();
+        ctx.moveTo(tx, ty - tree.size * 0.8);
+        ctx.lineTo(tx + tree.size * 0.3, ty - tree.size * 0.2);
+        ctx.lineTo(tx - tree.size * 0.3, ty - tree.size * 0.2);
+        ctx.closePath();
+        ctx.fill();
+      });
+
+      // === Rocks ===
+      isl.rocks.forEach((rock) => {
+        const rx = ix + rock.x;
+        const ry = iy + ih - 22 + rock.y;
+        ctx.fillStyle = '#607D8B';
+        ctx.beginPath();
+        ctx.arc(rx, ry, rock.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#90A4AE';
+        ctx.beginPath();
+        ctx.arc(rx - rock.size * 0.3, ry - rock.size * 0.3, rock.size * 0.4, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // === If collected, show a +5W +3P floating text ===
+      if (isl.collected && isl.life > 2300) {
+        const age = 2400 - isl.life;
+        ctx.font = 'bold 12px "Press Start 2P", monospace';
+        ctx.textAlign = 'center';
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 3;
+        const txt = '+5W +3P';
+        ctx.strokeText(txt, ix + iw / 2, iy - 10 - age * 0.15);
+        ctx.fillStyle = '#FFD700';
+        ctx.fillText(txt, ix + iw / 2, iy - 10 - age * 0.15);
+        ctx.textAlign = 'start';
+      }
     };
 
     const drawFish = (fish: Fish) => {
@@ -2068,6 +2782,34 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
         }
       }
 
+      // === DRAW PUDDLES ON RAFT (before player so player walks over them) ===
+      raftPuddles.forEach((rp) => {
+        ctx.fillStyle = 'rgba(41, 128, 185, 0.55)';
+        ctx.beginPath();
+        ctx.ellipse(rp.x, rp.y, rp.size, rp.size * 0.6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Puddle highlight (shimmer)
+        ctx.fillStyle = 'rgba(133, 193, 233, 0.6)';
+        ctx.beginPath();
+        ctx.ellipse(rp.x - rp.size * 0.3, rp.y - rp.size * 0.2, rp.size * 0.3, rp.size * 0.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Dark rim
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.25)';
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        ctx.ellipse(rp.x, rp.y, rp.size, rp.size * 0.6, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      });
+
+      // === DRAW SPLASH PARTICLES ===
+      splashParticles.forEach((sp) => {
+        const alpha = Math.min(1, sp.life / 15);
+        ctx.fillStyle = 'rgba(200, 230, 255, ' + alpha + ')';
+        ctx.beginPath();
+        ctx.arc(sp.x, sp.y, sp.size, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
       drawPlayer(player.x, player.y, playerStateRef.current);
 
       // === DRAW HOOK ===
@@ -2113,6 +2855,190 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
       ctx.fillStyle = `rgba(0, 0, 20, ${darkness * 0.75})`; ctx.fillRect(0, 0, 800, 600);
       if (lightningFlash > 0) { ctx.fillStyle = `rgba(255, 255, 255, ${lightningFlash})`; ctx.fillRect(0, 0, 800, 600); }
       if (isInWater) { ctx.fillStyle = 'rgba(255, 0, 0, 0.15)'; ctx.fillRect(0, 0, 800, 600); }
+
+      // Draw clouds
+      for (var _ci = 0; _ci < clouds.length; _ci++) { if (clouds[_ci].alpha > 0.03) drawCloud(clouds[_ci]); }
+
+      // === SUN/MOON (arc from top, disappear upward) ===
+      {
+        const dayProgress = (time % (60 * 60 * 2)) / (60 * 60 * 2);
+        const isDay = dayProgress < 0.5;
+
+        // Two arcs: sun goes up-and-over, moon does too
+        // Both rise from top, arc across, and disappear at top
+        let arcT = 0;
+        if (isDay) {
+          arcT = dayProgress * 2;
+        } else {
+          arcT = (dayProgress - 0.5) * 2;
+        }
+
+        // Position: starts at left-top, arcs over, ends at right-top
+        const arcX = 120 + arcT * 560;
+        // Goes DOWN then UP (visually arcs like a hill) — peaks at top
+        // arcT 0 = top-left, 0.5 = middle-lowest, 1.0 = top-right
+        const arcY = 15 + Math.sin(arcT * Math.PI) * 85;
+
+        // Only show if not raining
+        if (!isRaining) {
+          if (isDay) {
+            // === SUN ===
+            // Outer glow
+            const sunGlow = ctx.createRadialGradient(arcX, arcY, 3, arcX, arcY, 50);
+            sunGlow.addColorStop(0, "rgba(255, 240, 150, 0.55)");
+            sunGlow.addColorStop(0.4, "rgba(255, 210, 100, 0.28)");
+            sunGlow.addColorStop(1, "rgba(255, 180, 80, 0)");
+            ctx.fillStyle = sunGlow;
+            ctx.beginPath();
+            ctx.arc(arcX, arcY, 50, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Sun body
+            ctx.fillStyle = "#FFEB99";
+            ctx.beginPath();
+            ctx.arc(arcX, arcY, 16, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#FFD700";
+            ctx.beginPath();
+            ctx.arc(arcX, arcY, 12, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Sun rays (rotating)
+            ctx.strokeStyle = "rgba(255, 220, 100, 0.7)";
+            ctx.lineWidth = 2;
+            const rayRot = time * 0.01;
+            for (let r = 0; r < 8; r++) {
+              const ang = (r / 8) * Math.PI * 2 + rayRot;
+              const r1 = 19;
+              const r2 = 27 + Math.sin(time * 0.05 + r) * 3;
+              ctx.beginPath();
+              ctx.moveTo(arcX + Math.cos(ang) * r1, arcY + Math.sin(ang) * r1);
+              ctx.lineTo(arcX + Math.cos(ang) * r2, arcY + Math.sin(ang) * r2);
+              ctx.stroke();
+            }
+          } else {
+            // === MOON ===
+            // Blue glow
+            const moonGlow = ctx.createRadialGradient(arcX, arcY, 3, arcX, arcY, 45);
+            moonGlow.addColorStop(0, "rgba(220, 235, 255, 0.45)");
+            moonGlow.addColorStop(0.5, "rgba(180, 210, 255, 0.2)");
+            moonGlow.addColorStop(1, "rgba(150, 180, 255, 0)");
+            ctx.fillStyle = moonGlow;
+            ctx.beginPath();
+            ctx.arc(arcX, arcY, 45, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Moon body
+            ctx.fillStyle = "#F5F8FF";
+            ctx.beginPath();
+            ctx.arc(arcX, arcY, 14, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Crescent shadow
+            ctx.fillStyle = "rgba(20, 25, 55, 0.92)";
+            ctx.beginPath();
+            ctx.arc(arcX + 6, arcY - 2, 12, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Craters (small dots on the moon surface)
+            ctx.fillStyle = "rgba(180, 190, 210, 0.5)";
+            ctx.beginPath();
+            ctx.arc(arcX - 3, arcY - 4, 1.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(arcX - 1, arcY + 3, 1, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+
+        // === STARS at night (twinkling) ===
+        if (darkness > 0.35 && !isRaining) {
+          const starAlpha = Math.min(1, (darkness - 0.35) / 0.4);
+          for (let i = 0; i < 60; i++) {
+            // Deterministic star positions
+            const sx = ((i * 137 + 41) % 780) + 10;
+            const sy = ((i * 219 + 73) % 280) + 10;
+            const twinkle = Math.sin(time * 0.04 + i * 1.7) * 0.5 + 0.5;
+            const size = (i % 7 === 0) ? 2 : 1;
+            const alpha = starAlpha * (0.4 + twinkle * 0.6);
+            ctx.fillStyle = "rgba(255, 255, 240, " + alpha + ")";
+            ctx.fillRect(sx, sy, size, size);
+            // Cross-sparkle for the biggest stars
+            if (i % 11 === 0) {
+              ctx.fillStyle = "rgba(255, 255, 255, " + (alpha * 0.6) + ")";
+              ctx.fillRect(sx - 2, sy, 5, 1);
+              ctx.fillRect(sx, sy - 2, 1, 5);
+            }
+          }
+        }
+      }
+
+      // DARKNESS v2
+      if (darkness > 0.02) {
+        var tR = 0, tG = 0, tB = 20, tA = darkness * 0.75;
+        if (darkness < 0.35) { var t1 = darkness / 0.35; tR = Math.round(255 - t1 * 200); tG = Math.round(140 - t1 * 110); tB = Math.round(80 - t1 * 20); tA = t1 * 0.35; }
+        else if (darkness < 0.65) { var t2 = (darkness - 0.35) / 0.30; tR = Math.round(55 - t2 * 45); tG = Math.round(30 - t2 * 20); tB = Math.round(60 + t2 * 30); tA = 0.35 + t2 * 0.30; }
+        else { var t3 = (darkness - 0.65) / 0.35; tR = Math.round(10 - t3 * 10); tG = Math.round(10 - t3 * 10); tB = Math.round(90 - t3 * 60); tA = 0.62 + t3 * 0.10; }
+        ctx.fillStyle = 'rgba(' + tR + ', ' + tG + ', ' + tB + ', ' + tA + ')';
+        ctx.fillRect(0, 0, 800, 600);
+      }
+
+      // MOONLIGHT REFLECTION on water
+      if (!isRaining) {
+        var dayP2 = (time % (60 * 60 * 2)) / (60 * 60 * 2);
+        var isNight = dayP2 >= 0.5;
+        if (isNight && darkness > 0.3) {
+          var moonArc = (dayP2 - 0.5) * 2;
+          var moonX = 120 + moonArc * 560;
+          var reflectAlpha = Math.min(0.55, (darkness - 0.3) / 0.4 * 0.55);
+          for (var ri = 0; ri < 40; ri++) {
+            var ry = 340 + ri * 7;
+            var rw = 30 + Math.sin(time * 0.05 + ri * 0.3) * 8 + ri * 0.5;
+            var rFade = 1 - ri / 40;
+            var shimmer = Math.sin(time * 0.1 + ri * 0.8) * 0.3 + 0.7;
+            ctx.fillStyle = 'rgba(220, 235, 255, ' + (reflectAlpha * rFade * shimmer * 0.5) + ')';
+            ctx.fillRect(moonX - rw / 2, ry, rw, 3);
+          }
+          var moonGlow2 = ctx.createRadialGradient(moonX, 420, 10, moonX, 420, 180);
+          moonGlow2.addColorStop(0, 'rgba(200, 220, 255, ' + (reflectAlpha * 0.35) + ')');
+          moonGlow2.addColorStop(1, 'rgba(150, 180, 255, 0)');
+          ctx.fillStyle = moonGlow2;
+          ctx.fillRect(moonX - 180, 340, 360, 260);
+        }
+      }
+
+      // STARS v2 (small, twinkling, slow drift)
+      if (darkness > 0.25 && !isRaining) {
+        var starFade2 = Math.min(1, (darkness - 0.25) / 0.3);
+        for (var s2 = 0; s2 < 90; s2++) {
+          var bX = (s2 * 137 + 41) % 780 + 10;
+          var bY = (s2 * 219 + 73) % 260 + 10;
+          var sDrift2 = ((time * 0.1 + s2 * 25) % 900) * 0.1;
+          var sX = (bX + sDrift2) % 800;
+          var sY = bY;
+          var twinkle2 = Math.sin(time * 0.07 + s2 * 1.7) * 0.5 + 0.5;
+          var size2 = (s2 % 6 === 0) ? 1.5 : 1;
+          var sAlpha2 = starFade2 * (0.5 + twinkle2 * 0.5);
+          ctx.fillStyle = 'rgba(255, 255, 255, ' + sAlpha2 + ')';
+          ctx.fillRect(sX, sY, size2, size2);
+          if (s2 % 15 === 0) {
+            ctx.fillStyle = 'rgba(220, 230, 255, ' + (sAlpha2 * 0.6) + ')';
+            ctx.fillRect(sX - 2, sY + 0.5, 5, 1);
+            ctx.fillRect(sX + 0.5, sY - 2, 1, 5);
+          }
+        }
+      }
+
+      // === DIFFICULTY INDICATOR ===
+      const diffColor = diff === 'easy' ? '#2ECC71' : diff === 'hard' ? '#E74C3C' : '#F39C12';
+      ctx.font = 'bold 10px "Press Start 2P", monospace';
+      ctx.textAlign = 'center';
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 3;
+      ctx.strokeText(diff.toUpperCase(), 400, 22);
+      ctx.fillStyle = diffColor;
+      ctx.fillText(diff.toUpperCase(), 400, 22);
+      ctx.textAlign = 'start';
 
       if (damageFlash > 0) {
         const intensity = damageFlash / 30;
@@ -2166,6 +3092,33 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

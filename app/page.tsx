@@ -2,6 +2,11 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import MainMenu from '@/components/MainMenu';
+import SettingsMenu from '@/components/SettingsMenu';
+import CreditsScreen from '@/components/CreditsScreen';
+import CoopMenu from '@/components/CoopMenu';
+import AchievementsPanel from '@/components/AchievementsPanel';
+import AchievementToast from '@/components/AchievementToast';
 import Game from '@/components/Game';
 import HUD from '@/components/HUD';
 import CraftingMenu from '@/components/CraftingMenu';
@@ -9,21 +14,22 @@ import GameOver from '@/components/GameOver';
 import BackgroundMusic from '@/components/BackgroundMusic';
 
 export default function Home() {
-  const [scene, setScene] = useState<'menu' | 'playing'>('menu');
+  const [scene, setScene] = useState<'menu' | 'playing' | 'settings' | 'credits' | 'coop' | 'achievements'>('menu');
   const [gameId, setGameId] = useState(0);
   const [health, setHealth] = useState(5);
   const [hunger, setHunger] = useState(100);
   const [thirst, setThirst] = useState(100);
   const [fish, setFish] = useState(0);
   const [day, setDay] = useState(1);
-  const [wood, setWood] = useState(0);
-  const [plastic, setPlastic] = useState(0);
+  const [wood, setWood] = useState(5); // starting bonus
+  const [plastic, setPlastic] = useState(3); // starting bonus
   const [raftWidth, setRaftWidth] = useState(150);
   const [raftHealth, setRaftHealth] = useState(100);
   const [hasRod, setHasRod] = useState(false);
   const [hasSpear, setHasSpear] = useState(false);
   const [hasHammer, setHasHammer] = useState(false);
   const [hasRainBarrel, setHasRainBarrel] = useState(false);
+  const [hasCampfire, setHasCampfire] = useState(false);
   const [walls, setWalls] = useState(0);
   const [roofs, setRoofs] = useState(0);
   const [floors, setFloors] = useState(0);
@@ -33,6 +39,7 @@ export default function Home() {
   const [hasSave, setHasSave] = useState(false);
   const [playerState, setPlayerState] = useState<'standing' | 'sitting' | 'laying'>('standing');
   const [gameScale, setGameScale] = useState(1);
+  const [barrelWater, setBarrelWater] = useState(0);
 
   // Check for existing save on mount
   useEffect(() => {
@@ -50,6 +57,16 @@ export default function Home() {
     window.addEventListener('resize', updateScale);
     return () => window.removeEventListener('resize', updateScale);
   }, []);
+
+  // Poll barrel water from game (Game exposes it via window.__barrelWater)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (typeof window !== 'undefined' && (window as any).__barrelWater !== undefined) {
+        setBarrelWater((window as any).__barrelWater);
+      }
+    }, 200);
+    return () => clearInterval(interval);
+  }, []); // __barrelWaterPolling
 
   // ESC key handler
   useEffect(() => {
@@ -95,6 +112,7 @@ export default function Home() {
     if (type === 'SPEAR') setHasSpear(true);
     if (type === 'HAMMER') setHasHammer(true);
     if (type === 'RAIN_BARREL') setHasRainBarrel(true);
+    if (type === 'CAMPFIRE') setHasCampfire(true);
     if (type === 'WALL') setWalls(prev => Math.min(prev + 1, 4));
     if (type === 'ROOF') setRoofs(prev => Math.min(prev + 1, 1));
     if (type === 'FLOOR') setFloors(prev => Math.min(prev + 1, 2));
@@ -153,6 +171,7 @@ export default function Home() {
     setHasSpear(false);
     setHasHammer(false);
     setHasRainBarrel(false);
+    setHasCampfire(false);
     setWalls(0);
     setRoofs(0);
     setFloors(0);
@@ -162,7 +181,7 @@ export default function Home() {
   const handleSaveAndQuit = () => {
     const saveData = {
       health, hunger, thirst, fish, day, wood, plastic, raftWidth,
-      hasRod, hasSpear, hasHammer, hasRainBarrel, walls, roofs, floors, raftHealth,
+      hasRod, hasSpear, hasHammer, hasRainBarrel, hasCampfire, walls, roofs, floors, raftHealth,
     };
     localStorage.setItem('raftSave', JSON.stringify(saveData));
     setHasSave(true);
@@ -187,6 +206,7 @@ export default function Home() {
       setHasSpear(data.hasSpear || false);
       setHasHammer(data.hasHammer || false);
       setHasRainBarrel(data.hasRainBarrel || false);
+      setHasCampfire(data.hasCampfire || false);
       setWalls(data.walls || 0);
       setRoofs(data.roofs || 0);
       setFloors(data.floors || 0);
@@ -199,10 +219,22 @@ export default function Home() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-black relative overflow-hidden">
-      {scene === 'menu' ? (
+      {scene === 'achievements' ? (
+        <AchievementsPanel onClose={() => setScene('menu')} />
+      ) : scene === 'coop' ? (
+        <CoopMenu onClose={() => setScene('menu')} />
+      ) : scene === 'credits' ? (
+        <CreditsScreen onClose={() => setScene('menu')} />
+      ) : scene === 'settings' ? (
+        <SettingsMenu onClose={() => setScene('menu')} />
+      ) : scene === 'menu' ? (
         <MainMenu
           onPlay={() => { setGameOver(false); setPlayerState('standing'); setScene('playing'); }}
           onLoad={handleLoadGame}
+          onSettings={() => setScene('settings')}
+          onCredits={() => setScene('credits')}
+          onCoop={() => setScene('coop')}
+          onAchievements={() => setScene('achievements')}
           hasSave={hasSave}
         />
       ) : (
@@ -225,6 +257,7 @@ export default function Home() {
             hasSpear={hasSpear}
             hasHammer={hasHammer}
             hasRainBarrel={hasRainBarrel}
+            hasCampfire={hasCampfire}
             walls={walls}
             roofs={roofs}
             floors={floors}
@@ -247,6 +280,8 @@ export default function Home() {
             onHook={handleHook}
             hasSpear={hasSpear}
             hasRainBarrel={hasRainBarrel}
+            barrelWater={barrelWater}
+            raftHealth={raftHealth}
             playerState={playerState}
             onPoseChange={setPlayerState}
           />
@@ -260,6 +295,7 @@ export default function Home() {
               hasSpear={hasSpear}
               hasHammer={hasHammer}
               hasRainBarrel={hasRainBarrel}
+              hasCampfire={hasCampfire}
               walls={walls}
               roofs={roofs}
               floors={floors}
@@ -277,6 +313,16 @@ export default function Home() {
           </button>
         </div>
       )}
+      <AchievementToast />
     </main>
   );
 }
+
+
+
+
+
+
+
+
+

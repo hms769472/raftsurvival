@@ -38,6 +38,21 @@ export default function BackgroundMusic() {
     };
   }, [hasStarted]);
 
+  // Listen for settings changes from SettingsMenu
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (musicRef.current) {
+        musicRef.current.muted = !detail.musicOn;
+      }
+      if (waterRef.current) {
+        waterRef.current.muted = !detail.musicOn;
+      }
+    };
+    window.addEventListener('settingsChanged', handler);
+    return () => window.removeEventListener('settingsChanged', handler);
+  }, []); // __settingsListenerAdded
+
   const setVol = (v: number) => { setVolume(v); if (v > 0) setIsMuted(false); };
   const toggleMute = () => setIsMuted(prev => !prev);
 
@@ -123,3 +138,4 @@ export default function BackgroundMusic() {
     </div>
   );
 }
+

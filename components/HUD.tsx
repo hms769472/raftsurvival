@@ -11,7 +11,14 @@ type HUDProps = {
 
 export default function HUD({ health, hunger, fish, day, wood, plastic, onOpenCrafting, onEat, onAttack, onHook, hasSpear, playerState, onPoseChange }: HUDProps) {
   return (
-    <div className="absolute inset-0 pointer-events-none p-3 flex flex-col justify-between select-none">
+    <>
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+      `}</style>
+      <div className="absolute inset-0 pointer-events-none p-3 flex flex-col justify-between select-none">
       <div className="flex justify-between items-start">
         <div className="flex flex-col gap-1 items-start">
           <div className="flex gap-1 text-lg drop-shadow-[0_2px_0_rgba(0,0,0,1)]">
@@ -69,7 +76,9 @@ export default function HUD({ health, hunger, fish, day, wood, plastic, onOpenCr
           </div>
         </div>
       </div>
-    </div>
+    </div>`n    </>
   );
 }
+
+
 
