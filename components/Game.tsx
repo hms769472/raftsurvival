@@ -494,10 +494,19 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     let lightningFlash = 0;
     let lightningBolt: { x: number; y: number; life: number; } | null = null;
     let isRaining = false;
+    let isFoggy = false;
+    let fogTimer = 0;
+    let fogIntensity = 0;
     let rainTimer = 0;
     let spawnTimer = 0;
     let attackTimer = 0;
     let eatCooldown = 0;
+    // SKIN COLORS
+    const SKIN_MAP: any = { 'default': { c: '#8B4513', a: '#A0522D' }, 'dark': { c: '#3E2723', a: '#5D4037' }, 'bamboo': { c: '#F9A825', a: '#FBC02D' }, 'ice': { c: '#B3E5FC', a: '#E1F5FE' }, 'lava': { c: '#BF360C', a: '#E64A19' }, 'gold': { c: '#FFD700', a: '#FFF176' }, 'neon': { c: '#9C27B0', a: '#E040FB' }, 'dragon': { c: '#1B5E20', a: '#4CAF50' } };
+    let activeSkin = 'default';
+    try { const s = localStorage.getItem('raftSelectedSkin'); if (s && SKIN_MAP[s]) activeSkin = s; } catch (e) {}
+    let kraken: { x: number; y: number; hp: number; maxHp: number; state: 'rising' | 'attacking' | 'dying'; timer: number; hitFlash: number; } | null = null;
+    let krakenTimer = 0;
     let barrelWater = 0; // 0-100 — how much water is in the rain barrel
 
     // === DIFFICULTY SETTINGS ===
@@ -541,7 +550,9 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
       },
     }[diff];
     let islands: Island[] = [];
+    let shipwreckTimer = 0;
     let chests: TreasureChest[] = [];
+    let shipwrecks: { x: number; y: number; vx: number; vy: number; size: number; rotation: number; life: number; looted: boolean; }[] = [];
     let clouds: { x: number; y: number; size: number; speed: number; alpha: number; vx?: number; vy?: number; }[] = [];
     let cloudSpawnTimer = 0;
     let splashParticles: { x: number; y: number; vx: number; vy: number; life: number; size: number; }[] = [];
@@ -627,7 +638,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         attachSide: 1,
         offsetX: 0,
         offsetY: 0,
-        hasAttached: false,
+        hasAttached: false, isGolden: Math.random() < 0.06,
         wanderAngle: Math.random() * Math.PI * 2,
         wanderTimer: 0,
       });
@@ -742,7 +753,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         state: 'swimming',
         bitesLeft: sizeCategory === 'large' ? 5 : sizeCategory === 'medium' ? 3 : 2,
         attachSide: 1, offsetX: 0, offsetY: 0,
-        hasAttached: false,
+        hasAttached: false, isGolden: Math.random() < 0.06,
         wanderAngle: Math.random() * Math.PI * 2,
         wanderTimer: 0,
         sizeCategory,
@@ -787,7 +798,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       (window as any).__eatFishFromGame = () => {
         if (statsRef.current.fish > 0) {
           statsRef.current.fish -= 1;
-          statsRef.current.hunger = Math.min(100, statsRef.current.hunger + 40);
+          var hGain2 = f.isGolden ? 75 : 40; statsRef.current.hunger = Math.min(100, statsRef.current.hunger + hGain2);
         }
       };
     }
@@ -845,7 +856,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       
       const DAY_LENGTH = 60 * 60 * 2;
       const dayProgress = (time % DAY_LENGTH) / DAY_LENGTH;
-      darkness = dayProgress > 0.5 ? (dayProgress - 0.5) * 2 : 0;
+      if (dayProgress < 0.35) { darkness = 0; } else if (dayProgress < 0.5) { const dt1 = (dayProgress - 0.35) / 0.15; darkness = dt1 * dt1 * dt1; } else if (dayProgress < 0.85) { darkness = 1; } else { const dt2 = (dayProgress - 0.85) / 0.15; darkness = 1 - dt2 * dt2 * dt2; }
       statsRef.current.day = Math.floor(time / DAY_LENGTH) + 1;
 
       raftBobY = Math.sin(time * 0.04) * 4;
@@ -876,6 +887,8 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
 
       if (statsRef.current.health <= 0) { onGameOver(); return; }
 
+      if (time % 1200 === 0 && !isFoggy && Math.random() < 0.4) { isFoggy = true; fogTimer = 800 + Math.random() * 600; }
+      if (isFoggy) { fogIntensity = Math.min(0.5, fogIntensity + 0.004); fogTimer--; if (fogTimer <= 0) isFoggy = false; } else { fogIntensity = Math.max(0, fogIntensity - 0.005); }
       rainTimer++;
       if (!isRaining && rainTimer > 600 + Math.random() * 600) { isRaining = true; rainTimer = 0; }
       else if (isRaining && rainTimer > 900 + Math.random() * 600) { isRaining = false; rainTimer = 0; }
@@ -1595,7 +1608,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       ctx.fill();
 
       // === Chest body (bottom half) ===
-      ctx.fillStyle = '#8B4513';
+      ctx.fillStyle = (typeof SKIN_MAP !== 'undefined' && activeSkin && SKIN_MAP[activeSkin]) ? SKIN_MAP[activeSkin].c : '#8B4513';
       ctx.fillRect(-s * 0.85, -s * 0.1, s * 1.7, s * 0.9);
 
       // Wood plank lines
@@ -1607,7 +1620,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       ctx.stroke();
 
       // === Chest lid (top half — arched) ===
-      ctx.fillStyle = '#A0522D';
+      ctx.fillStyle = (typeof SKIN_MAP !== 'undefined' && activeSkin && SKIN_MAP[activeSkin]) ? SKIN_MAP[activeSkin].a : '#A0522D';
       ctx.beginPath();
       ctx.moveTo(-s * 0.85, -s * 0.1);
       ctx.quadraticCurveTo(0, -s * 0.9, s * 0.85, -s * 0.1);
@@ -1756,7 +1769,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       ctx.fill();
 
       // Middle (light dirt)
-      ctx.fillStyle = '#A0522D';
+      ctx.fillStyle = (typeof SKIN_MAP !== 'undefined' && activeSkin && SKIN_MAP[activeSkin]) ? SKIN_MAP[activeSkin].a : '#A0522D';
       ctx.beginPath();
       ctx.moveTo(ix + 15, iy + ih - 12);
       ctx.lineTo(ix + iw - 15, iy + ih - 12);
@@ -1906,10 +1919,11 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       ctx.stroke();
 
       // === BODY (scaled ellipse) ===
-      ctx.fillStyle = fish.color;
+      if (fish.isGolden) { var gGrad = ctx.createRadialGradient(0, -hh * 0.3, 0, 0, 0, hw * 1.2); gGrad.addColorStop(0, '#FFF8DC'); gGrad.addColorStop(0.4, '#FFD700'); gGrad.addColorStop(1, '#B8860B'); ctx.fillStyle = gGrad; } else { ctx.fillStyle = fish.color; }
       ctx.beginPath();
       ctx.ellipse(0, 0, hw, hh, 0, 0, Math.PI * 2);
       ctx.fill();
+      if (fish.isGolden) { ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(0, 0, hw, hh, 0, 0, Math.PI * 2); ctx.stroke(); for (var gsp = 0; gsp < 3; gsp++) { var gAng = time * 0.05 + gsp * 2.09; ctx.fillStyle = 'rgba(255, 240, 150, ' + (0.7 + Math.sin(time * 0.1 + gsp) * 0.3) + ')'; ctx.beginPath(); ctx.arc(Math.cos(gAng) * hw * 1.3, Math.sin(gAng) * hh * 1.3, 1.5, 0, Math.PI * 2); ctx.fill(); } }
 
       // === BELLY (lighter bottom half) ===
       ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
@@ -2325,8 +2339,8 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       ctx.rotate(item.rotation);
       const w = item.width; const h = item.height;
       ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(2, 2, w / 2, h / 3, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#8B4513'; ctx.fillRect(-w / 2, -h / 3, w, h * 2 / 3);
-      ctx.fillStyle = '#A0522D'; ctx.fillRect(-w / 2, -h / 3, w, h / 6);
+      ctx.fillStyle = (typeof SKIN_MAP !== 'undefined' && activeSkin && SKIN_MAP[activeSkin]) ? SKIN_MAP[activeSkin].c : '#8B4513'; ctx.fillRect(-w / 2, -h / 3, w, h * 2 / 3);
+      ctx.fillStyle = (typeof SKIN_MAP !== 'undefined' && activeSkin && SKIN_MAP[activeSkin]) ? SKIN_MAP[activeSkin].a : '#A0522D'; ctx.fillRect(-w / 2, -h / 3, w, h / 6);
       ctx.fillStyle = '#5D3A0F'; ctx.fillRect(-w / 2, h / 6, w, h / 6);
       ctx.strokeStyle = '#5D3A0F'; ctx.lineWidth = 1;
       for (let i = -w / 2 + 4; i < w / 2; i += 6) {
@@ -2409,9 +2423,10 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       }
 
       // Main raft body
-      ctx.fillStyle = '#8B4513';
+      var sk = SKIN_MAP[activeSkin] || SKIN_MAP['default'];
+      ctx.fillStyle = sk.c;
       ctx.fillRect(rx, ry, rw, rh);
-      ctx.fillStyle = '#A0522D';
+      ctx.fillStyle = sk.a;
       ctx.fillRect(rx + 5, ry + 5, rw - 10, rh - 10);
 
       ctx.strokeStyle = '#6B3410';
@@ -3029,6 +3044,37 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         }
       }
 
+      // FOG LAYER
+      if (fogIntensity > 0.01) {
+        ctx.fillStyle = 'rgba(200, 210, 220, ' + fogIntensity + ')';
+        ctx.fillRect(0, 0, 800, 600);
+        for (var fi = 0; fi < 15; fi++) {
+          var ffx = ((fi * 137 + time * 0.4) % 900) - 50;
+          var ffy = ((fi * 219 + time * 0.2) % 650) - 25;
+          var ffW = 90 + Math.sin(time * 0.02 + fi) * 25;
+          var ffA = fogIntensity * 0.4;
+          ctx.fillStyle = 'rgba(225, 230, 240, ' + ffA + ')';
+          ctx.beginPath();
+          ctx.ellipse(ffx, ffy, ffW, 45, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = 'rgba(200, 210, 220, ' + (fogIntensity * 0.5) + ')';
+        ctx.fillRect(0, 0, 800, 600);
+      }
+
+      // FPS DISPLAY (only if enabled in settings)
+      if (typeof window !== 'undefined' && (window as any).__showFps) {
+        ctx.font = 'bold 10px Arial';
+        ctx.textAlign = 'left';
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 3;
+        ctx.strokeText('FPS: ' + fpsValue, 10, 590);
+        var fpsColor = fpsValue >= 50 ? '#2ECC71' : fpsValue >= 30 ? '#F39C12' : '#E74C3C';
+        ctx.fillStyle = fpsColor;
+        ctx.fillText('FPS: ' + fpsValue, 10, 590);
+        ctx.textAlign = 'start';
+      }
+
       // === DIFFICULTY INDICATOR ===
       const diffColor = diff === 'easy' ? '#2ECC71' : diff === 'hard' ? '#E74C3C' : '#F39C12';
       ctx.font = 'bold 10px "Press Start 2P", monospace';
@@ -3092,6 +3138,23 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

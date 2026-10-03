@@ -4,12 +4,13 @@ import React from 'react';
 
 type HUDProps = {
   health: number; hunger: number; fish: number; day: number; wood: number; plastic: number;
-  onOpenCrafting: () => void; onEat: () => void; onAttack: () => void; onHook: () => void; hasSpear: boolean;
+  onOpenCrafting: () => void;
+  onOpenRecipes: () => void; onEat: () => void; onAttack: () => void; onHook: () => void; hasSpear: boolean;
   playerState: 'standing' | 'sitting' | 'laying';
   onPoseChange: (pose: 'standing' | 'sitting' | 'laying') => void;
 };
 
-export default function HUD({ health, hunger, fish, day, wood, plastic, onOpenCrafting, onEat, onAttack, onHook, hasSpear, playerState, onPoseChange }: HUDProps) {
+export default function HUD({ health, hunger, fish, day, wood, plastic, onOpenCrafting, onOpenRecipes, onEat, onAttack, onHook, hasSpear, playerState, onPoseChange }: HUDProps) {
   return (
     <>
       <style>{`
@@ -71,7 +72,8 @@ export default function HUD({ health, hunger, fish, day, wood, plastic, onOpenCr
               </div>
             )}
             <div onClick={onEat} className="w-14 h-14 bg-[#E74C3C] border-[3px] border-[#8B0000] rounded-full flex items-center justify-center text-2xl shadow-lg cursor-pointer hover:bg-[#C0392B] transition-colors" title="Eat Fish">🐟</div>
-            <div onClick={onOpenCrafting} className="w-14 h-14 bg-[#E6A15E] border-[3px] border-[#8B4513] rounded-full flex items-center justify-center text-2xl shadow-lg cursor-pointer hover:bg-[#D68D4A] transition-colors">⚒️</div>
+            <div onClick={onOpenRecipes} className="w-14 h-14 bg-[#8E44AD] border-[3px] border-[#6C3483] rounded-full flex items-center justify-center text-2xl shadow-lg cursor-pointer hover:bg-[#6C3483] transition-colors" title="Recipe Book">📖</div>
+          <div onClick={onOpenCrafting} className="w-14 h-14 bg-[#E6A15E] border-[3px] border-[#8B4513] rounded-full flex items-center justify-center text-2xl shadow-lg cursor-pointer hover:bg-[#D68D4A] transition-colors">⚒️</div>
             <div onClick={onHook} className="w-14 h-14 bg-[#2C3E50] border-[3px] border-[#F1C40F] rounded-full flex items-center justify-center text-2xl shadow-lg cursor-pointer hover:bg-[#34495E] transition-colors" title="Throw Hook (H)">🪝</div>
           </div>
         </div>
@@ -79,6 +81,7 @@ export default function HUD({ health, hunger, fish, day, wood, plastic, onOpenCr
     </div>`n    </>
   );
 }
+
 
 
 

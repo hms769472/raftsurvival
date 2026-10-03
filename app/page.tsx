@@ -9,6 +9,7 @@ import AchievementsPanel from '@/components/AchievementsPanel';
 import AchievementToast from '@/components/AchievementToast';
 import Game from '@/components/Game';
 import HUD from '@/components/HUD';
+import RecipeBook from '@/components/RecipeBook';
 import CraftingMenu from '@/components/CraftingMenu';
 import GameOver from '@/components/GameOver';
 import BackgroundMusic from '@/components/BackgroundMusic';
@@ -34,6 +35,7 @@ export default function Home() {
   const [roofs, setRoofs] = useState(0);
   const [floors, setFloors] = useState(0);
   const [isCraftingOpen, setIsCraftingOpen] = useState(false);
+  const [isRecipeBookOpen, setIsRecipeBookOpen] = useState(false);
   const [craftAction, setCraftAction] = useState<{ type: string; id: number } | null>(null);
   const [gameOver, setGameOver] = useState(false);
   const [hasSave, setHasSave] = useState(false);
@@ -84,6 +86,7 @@ export default function Home() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() === 'c' && scene === 'playing' && !gameOver) setIsCraftingOpen(prev => !prev);
+      if (e.key.toLowerCase() === 'r' && scene === 'playing' && !gameOver) setIsRecipeBookOpen(prev => !prev);
       if (e.key.toLowerCase() === 's' && scene === 'playing' && !gameOver) setPlayerState(prev => prev === 'sitting' ? 'standing' : 'sitting');
       if (e.key.toLowerCase() === 'l' && scene === 'playing' && !gameOver) setPlayerState(prev => prev === 'laying' ? 'standing' : 'laying');
     };
@@ -152,7 +155,15 @@ export default function Home() {
   };
 
   const handleGameOver = useCallback(() => {
-    setGameOver(true);
+    try {
+      var stats = JSON.parse(localStorage.getItem('raftAchStats') || '{}');
+      var earned = Math.floor(day * 5) + Math.floor((stats.totalFishEaten || 0) * 0.5);
+      if (earned > 0) {
+        var current = parseInt(localStorage.getItem('raftCoins') || '0');
+        localStorage.setItem('raftCoins', String(current + earned));
+      }
+    } catch (e) {}
+    setGameOver(true); // COINS REWARD v2
   }, []);
 
   const handleRespawn = () => {
@@ -274,6 +285,7 @@ export default function Home() {
             wood={wood}
             plastic={plastic}
             onOpenCrafting={() => setIsCraftingOpen(true)}
+            onOpenRecipes={() => setIsRecipeBookOpen(true)}
             onEat={handleEat}
             onDrink={handleDrink}
             onAttack={handleAttack}
@@ -285,6 +297,9 @@ export default function Home() {
             playerState={playerState}
             onPoseChange={setPlayerState}
           />
+          {isRecipeBookOpen && (
+            <RecipeBook onClose={() => setIsRecipeBookOpen(false)} />
+          )}
           {isCraftingOpen && (
             <CraftingMenu
               onClose={() => setIsCraftingOpen(false)}
@@ -317,6 +332,8 @@ export default function Home() {
     </main>
   );
 }
+
+
 
 
 
