@@ -498,6 +498,9 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     let lightningFlash = 0;
     let lightningBolt: { x: number; y: number; life: number; } | null = null;
     let isRaining = false;
+    let weatherType: 'clear' | 'rain' | 'snow' | 'heat' = 'clear';
+    let weatherTimer = 0;
+    let snowflakes: { x: number; y: number; size: number; speed: number; drift: number; }[] = [];
     let isFoggy = false;
     let fogTimer = 0;
     let fogIntensity = 0;
@@ -594,6 +597,7 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     let bobberX = 0;
     let bobberY = 0;
 
+    for (let i = 0; i < 60; i++) snowflakes.push({ x: Math.random() * 800, y: Math.random() * 600, size: 1 + Math.random() * 3, speed: 0.5 + Math.random() * 1.2, drift: (Math.random() - 0.5) * 0.5 });
     for (let i = 0; i < 100; i++) raindrops.push({ x: Math.random() * 800, y: Math.random() * 600, length: 10 + Math.random() * 20, speed: 10 + Math.random() * 10 });
 
     const createWaveStreak = (yStart: number | null = null): WaveStreak => ({
@@ -900,9 +904,46 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
 
       if (statsRef.current.health <= 0) { onGameOver(); return; }
 
+      // KRAKEN UPDATE
+      krakenTimer++;
+      if (!kraken && krakenTimer > 6000 && Math.random() < 0.003) {
+        krakenTimer = 0;
+        kraken = { x: raftRef.current.x + raftRef.current.width / 2, y: raftScreenY + 300, hp: 5, maxHp: 5, state: 'rising', timer: 0, hitFlash: 0 };
+      }
+      if (kraken) {
+        kraken.timer++;
+        if (kraken.hitFlash > 0) kraken.hitFlash--;
+        if (kraken.state === 'rising') {
+          kraken.y -= 1.2;
+          if (kraken.timer > 60) { kraken.state = 'attacking'; kraken.timer = 0; }
+        } else if (kraken.state === 'attacking') {
+          if (kraken.timer % 180 === 0) {
+            statsRef.current.health -= 0.5;
+            if (statsRef.current.health < 0) statsRef.current.health = 0;
+          }
+          if (kraken.timer > 600) { kraken.state = 'dying'; kraken.timer = 0; }
+        } else if (kraken.state === 'dying') {
+          kraken.y += 1.5;
+          if (kraken.timer > 90) kraken = null;
+        }
+      }
+
       if (time % 1200 === 0 && !isFoggy && Math.random() < 0) { isFoggy = true; fogTimer = 800 + Math.random() * 600; }
       if (isFoggy) { fogIntensity = Math.min(0.02, fogIntensity + 0.004); fogTimer--; if (fogTimer <= 0) isFoggy = false; } else { fogIntensity = Math.max(0, fogIntensity - 0.005); }
       rainTimer++;
+      // WEATHER CYCLE
+      weatherTimer++;
+      if (weatherTimer > 1200 && weatherType === 'clear') {
+        var wRoll = Math.random();
+        if (wRoll < 0.45) { weatherType = 'rain'; isRaining = true; }
+        else if (wRoll < 0.75) { weatherType = 'snow'; isRaining = false; }
+        else { weatherType = 'heat'; isRaining = false; }
+        weatherTimer = 0;
+      }
+      if (weatherType !== 'clear' && weatherTimer > 1800 + Math.random() * 600) {
+        weatherType = 'clear'; isRaining = false; weatherTimer = 0;
+      }
+      isRaining = (weatherType === 'rain');
       if (!isRaining && rainTimer > 600 + Math.random() * 600) { isRaining = true; rainTimer = 0; }
       else if (isRaining && rainTimer > 900 + Math.random() * 600) { isRaining = false; rainTimer = 0; }
       lightningTimer++;
@@ -1129,6 +1170,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         }
         if (shark && shark.x < player.x + 120 && shark.x + shark.width > player.x - 40) {
           shark.health--;
+          if (kraken && Math.abs(kraken.x - (player.x + player.width / 2)) < 120) { kraken.hp--; kraken.hitFlash = 20; if (kraken.hp <= 0) { statsRef.current.wood += 40; statsRef.current.plastic += 25; statsRef.current.fish += 5; statsRef.current.health = 5; statsRef.current.hunger = 100; (window as any).__chestMessage = { text: 'KRAKEN DEFEATED!', time: 180 }; onStatsUpdate({ ...statsRef.current }); kraken.state = 'dying'; kraken.timer = 0; } }
           if (shark.health <= 0) { 
             shark = null; 
             const s = loadAchStats();
@@ -2384,6 +2426,21 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
     };
 
     const drawVerticalRaft = (rx: number, ry: number, rw: number, rh: number) => {
+
+      // RAFT LEVEL BADGE
+      if (raftLevel >= 2) {
+        var _lvX = rx + rw / 2;
+        var _lvY = ry - 12;
+        ctx.font = 'bold 9px "Press Start 2P", monospace';
+        ctx.textAlign = 'center';
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 3;
+        ctx.strokeText('LV ' + raftLevel, _lvX, _lvY);
+        var _lvColor = raftLevel >= 5 ? '#FFD700' : raftLevel >= 4 ? '#E74C3C' : raftLevel >= 3 ? '#3498DB' : '#2ECC71';
+        ctx.fillStyle = _lvColor;
+        ctx.fillText('LV ' + raftLevel, _lvX, _lvY);
+        ctx.textAlign = 'start';
+      }
       ctx.save();
       ctx.translate(rx + rw / 2, ry + rh / 2);
       ctx.rotate(raftTilt);
@@ -2641,6 +2698,55 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       }
     };
 
+    const drawKraken = (kr: any) => {
+      var kx = kr.x; var ky = kr.y;
+      var wobble = Math.sin(time * 0.08) * 8;
+      var isHit = kr.hitFlash > 0;
+      var bodyColor = isHit ? '#FF6B6B' : '#5D3A9C';
+      var darkColor = isHit ? '#B71C1C' : '#3A2258';
+      ctx.fillStyle = 'rgba(200, 230, 255, 0.5)';
+      ctx.beginPath(); ctx.ellipse(kx, ky + 40, 100, 20, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = bodyColor;
+      ctx.beginPath(); ctx.ellipse(kx, ky, 55, 70, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = darkColor;
+      ctx.beginPath(); ctx.ellipse(kx, ky + 15, 45, 50, 0, 0, Math.PI * 2); ctx.fill();
+      for (var ti = 0; ti < 4; ti++) {
+        var side = ti < 2 ? -1 : 1; var ti2 = ti % 2;
+        var baseY = ky + 10 + ti2 * 25;
+        ctx.strokeStyle = bodyColor; ctx.lineWidth = 10 - ti2 * 2; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(kx + side * 40, baseY);
+        ctx.bezierCurveTo(kx + side * (70 + ti2 * 10), baseY + 10 + wobble, kx + side * (55 + ti2 * 5), baseY + 40 + wobble, kx + side * (80 + ti2 * 10), baseY + 60 + wobble * 0.5);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = bodyColor; ctx.lineWidth = 14;
+      ctx.beginPath(); ctx.moveTo(kx - 8, ky + 40); ctx.bezierCurveTo(kx - 15, ky + 70, kx - 5 + wobble * 0.3, ky + 90, kx + 5, ky + 110); ctx.stroke();
+      ctx.fillStyle = '#FFF';
+      ctx.beginPath(); ctx.ellipse(kx - 20, ky - 10, 12, 15, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(kx + 20, ky - 10, 12, 15, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#E74C3C';
+      ctx.beginPath(); ctx.arc(kx - 22, ky - 6, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(kx + 18, ky - 6, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#000';
+      ctx.beginPath(); ctx.arc(kx - 22, ky - 6, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(kx + 18, ky - 6, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(kx - 32, ky - 28); ctx.lineTo(kx - 10, ky - 22); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(kx + 32, ky - 28); ctx.lineTo(kx + 10, ky - 22); ctx.stroke();
+      ctx.fillStyle = '#000';
+      ctx.beginPath(); ctx.moveTo(kx - 8, ky + 25); ctx.lineTo(kx, ky + 40); ctx.lineTo(kx + 8, ky + 25); ctx.closePath(); ctx.fill();
+      var barW = 120; var barH = 10;
+      var barX = kx - barW / 2; var barY = ky - 100;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'; ctx.fillRect(barX - 2, barY - 2, barW + 4, barH + 4);
+      ctx.fillStyle = '#333'; ctx.fillRect(barX, barY, barW, barH);
+      var hpW = (kr.hp / kr.maxHp) * barW;
+      var hpColor = kr.hp > 3 ? '#2ECC71' : kr.hp > 1 ? '#F39C12' : '#E74C3C';
+      ctx.fillStyle = hpColor; ctx.fillRect(barX, barY, hpW, barH);
+      ctx.font = 'bold 12px "Press Start 2P", monospace'; ctx.textAlign = 'center';
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 4; ctx.strokeText('KRAKEN', kx, barY - 8);
+      ctx.fillStyle = '#9C27B0'; ctx.fillText('KRAKEN', kx, barY - 8);
+      ctx.textAlign = 'start';
+    };
+
     const draw = () => {
       ctx.clearRect(0, 0, 800, 600);
 
@@ -2715,6 +2821,9 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         const sharkDrawInFront = shark.y > raftDrawY - 20;
         if (sharkDrawInFront) drawShark(shark);
       }
+
+      // KRAKEN DRAW CALL
+      if (kraken) drawKraken(kraken);
 
       // === FISHING ROD (visible in player's hand) ===
       if ((typeof window !== 'undefined' ? (window as any).__hasRodRef : false) && playerStateRef.current === 'standing') {
@@ -3041,6 +3150,40 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         }
       }
 
+      // SNOW DRAWING
+      if (weatherType === 'snow') {
+        for (var _sno = 0; _sno < snowflakes.length; _sno++) {
+          var _sf = snowflakes[_sno];
+          _sf.y += _sf.speed;
+          _sf.x += Math.sin(time * 0.02 + _sf.y * 0.01) * 0.5 + _sf.drift;
+          if (_sf.y > 600) { _sf.y = -10; _sf.x = Math.random() * 800; }
+          if (_sf.x < 0) _sf.x = 800;
+          if (_sf.x > 800) _sf.x = 0;
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+          ctx.beginPath(); ctx.arc(_sf.x, _sf.y, _sf.size, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.fillStyle = 'rgba(200, 220, 255, 0.08)';
+        ctx.fillRect(0, 0, 800, 600);
+      }
+
+      // HEAT DRAWING
+      if (weatherType === 'heat') {
+        ctx.fillStyle = 'rgba(255, 180, 100, 0.12)';
+        ctx.fillRect(0, 0, 800, 600);
+        for (var _hi = 0; _hi < 6; _hi++) {
+          var _hy = ((time * 0.5 + _hi * 100) % 700) - 50;
+          ctx.strokeStyle = 'rgba(255, 220, 150, ' + (0.08 + Math.sin(time * 0.05 + _hi) * 0.04) + ')';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          for (var _hx = 0; _hx < 800; _hx += 20) {
+            var _wy = _hy + Math.sin(_hx * 0.05 + time * 0.1 + _hi) * 4;
+            if (_hx === 0) ctx.moveTo(_hx, _wy);
+            else ctx.lineTo(_hx, _wy);
+          }
+          ctx.stroke();
+        }
+      }
+
       // DARKNESS v2
       if (darkness > 0.02) {
         ctx.fillStyle = 'rgba(8, 12, 35, ' + (darkness * 0.5) + ')';
@@ -3174,6 +3317,17 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
 
 
 
