@@ -2426,7 +2426,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
     };
 
     const drawVerticalRaft = (rx: number, ry: number, rw: number, rh: number) => {
-
+      const raftLevel = Math.max(1, Math.floor((rh - 150) / 40) + 1);
       // RAFT LEVEL BADGE
       if (raftLevel >= 2) {
         var _lvX = rx + rw / 2;
