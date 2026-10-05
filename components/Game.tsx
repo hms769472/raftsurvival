@@ -10,6 +10,7 @@ type GameProps = {
   hasRod: boolean;
   hasSpear: boolean;
   hasHammer: boolean;
+  hasCampfire: boolean;
   walls: number;
   roofs: number;
   floors: number;
@@ -63,7 +64,6 @@ type Fish = {
   isGolden: boolean;
   targetFoodIndex: number;
   restTimer: number;
-  isGolden: boolean;
   attachFacing: number;
   graceTimer: number;
   attachSide: -1 | 1;
@@ -77,7 +77,7 @@ const RAFT_WIDTH = 80;
 const RAFT_CENTER_Y = 300;
 const WORLD_SCROLL_SPEED = 2.2;
 
-export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raftWidth, hasRod, hasSpear, hasHammer, walls, roofs, floors, gameOver, onGameOver, playerState }: GameProps) {
+export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raftWidth, hasRod, hasSpear, hasHammer, hasCampfire, walls, roofs, floors, gameOver, onGameOver, playerState }: GameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const waveSoundRef = useRef<{ noiseSource: AudioBufferSourceNode; lfo: OscillatorNode; } | null>(null);
@@ -126,8 +126,9 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
       (window as any).__hasRodRef = hasRod;
       (window as any).__hasSpearRef = hasSpear;
       (window as any).__hasHammerRef = hasHammer;
+      (window as any).__hasCampfireRef = hasCampfire;
     }
-  }, [walls, roofs, floors, hasRod, hasSpear, hasHammer]);
+  }, [walls, roofs, floors, hasRod, hasSpear, hasHammer, hasCampfire]);
 
   // Water waves ambient sound
   useEffect(() => {
@@ -507,6 +508,8 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     try { const s = localStorage.getItem('raftSelectedSkin'); if (s && SKIN_MAP[s]) activeSkin = s; } catch (e) {}
     let kraken: { x: number; y: number; hp: number; maxHp: number; state: 'rising' | 'attacking' | 'dying'; timer: number; hitFlash: number; } | null = null;
     let krakenTimer = 0;
+    let cookedFish = 0;
+    let cookingTimer = 0;
     let barrelWater = 0; // 0-100 — how much water is in the rain barrel
 
     // === DIFFICULTY SETTINGS ===
@@ -795,12 +798,17 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
 
     // Expose eat function to parent — React state can't touch statsRef directly
     if (typeof window !== 'undefined') {
-      (window as any).__eatFishFromGame = () => {
+      (window as any).__eatFishFromGame = () => { console.log('[EAT RAW] clicked, fish=' + statsRef.current.fish);
         if (statsRef.current.fish > 0) {
           statsRef.current.fish -= 1;
-          var hGain2 = f.isGolden ? 75 : 40; statsRef.current.hunger = Math.min(100, statsRef.current.hunger + hGain2);
+          statsRef.current.hunger = Math.min(100, statsRef.current.hunger + 40);
+          playEatSound();
+          onStatsUpdate({ ...statsRef.current });
         }
       };
+      (window as any).__drinkWaterFromGame = () => { if (barrelWater >= 30 && statsRef.current.thirst < 100) { barrelWater -= 30; statsRef.current.thirst = Math.min(100, statsRef.current.thirst + 40); (window as any).__barrelWater = barrelWater; onStatsUpdate({ ...statsRef.current }); } };
+      (window as any).__cookFish = () => { console.log('[COOK] clicked, hasFire=' + (window as any).__hasCampfireRef + ' fish=' + statsRef.current.fish); var hasFire = (window as any).__hasCampfireRef; if (hasFire && statsRef.current.fish > 0 && cookingTimer <= 0) { statsRef.current.fish -= 1; cookedFish += 1; cookingTimer = 180; onStatsUpdate({ ...statsRef.current }); } };
+      (window as any).__eatCookedFish = () => { console.log('[EAT COOKED] clicked, cookedFish=' + cookedFish); if (cookedFish > 0) { cookedFish -= 1; statsRef.current.hunger = Math.min(100, statsRef.current.hunger + 60); onStatsUpdate({ ...statsRef.current }); } };
     }
 
     const update = () => {
@@ -3101,6 +3109,16 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
 
 
 

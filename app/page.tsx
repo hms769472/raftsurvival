@@ -124,6 +124,9 @@ export default function Home() {
 
   const handleCraftComplete = useCallback(() => setCraftAction(null), []);
 
+  const handleCook = () => { if (typeof window !== 'undefined' && (window as any).__cookFish) { (window as any).__cookFish(); } };
+  const handleEatCooked = () => { if (typeof window !== 'undefined' && (window as any).__eatCookedFish) { (window as any).__eatCookedFish(); } };
+
   const handleEat = () => {
     if (typeof window !== 'undefined' && (window as any).__eatFishFromGame) {
       (window as any).__eatFishFromGame();
@@ -287,6 +290,8 @@ export default function Home() {
             onOpenCrafting={() => setIsCraftingOpen(true)}
             onOpenRecipes={() => setIsRecipeBookOpen(true)}
             onEat={handleEat}
+            onCook={handleCook}
+            onEatCooked={handleEatCooked}
             onDrink={handleDrink}
             onAttack={handleAttack}
             onHook={handleHook}
@@ -296,6 +301,7 @@ export default function Home() {
             raftHealth={raftHealth}
             playerState={playerState}
             onPoseChange={setPlayerState}
+            onMainMenu={() => { setScene('menu'); setIsCraftingOpen(false); setIsRecipeBookOpen(false); }}
           />
           {isRecipeBookOpen && (
             <RecipeBook onClose={() => setIsRecipeBookOpen(false)} />
@@ -332,6 +338,9 @@ export default function Home() {
     </main>
   );
 }
+
+
+
 
 
 

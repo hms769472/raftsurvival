@@ -4,7 +4,6 @@ import { useState, useRef, useEffect } from 'react';
 
 export default function BackgroundMusic() {
   const musicRef = useRef<HTMLAudioElement>(null);
-  const waterRef = useRef<HTMLAudioElement>(null);
   const [volume, setVolume] = useState(0.5);
   const [isMuted, setIsMuted] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
@@ -14,10 +13,7 @@ export default function BackgroundMusic() {
       musicRef.current.volume = volume;
       musicRef.current.muted = isMuted;
     }
-    if (waterRef.current) {
-      waterRef.current.volume = volume * 0.7;
-      waterRef.current.muted = isMuted;
-    }
+    
   }, [volume, isMuted]);
 
   useEffect(() => {
@@ -25,9 +21,7 @@ export default function BackgroundMusic() {
       if (musicRef.current && !hasStarted) {
         musicRef.current.play().then(() => setHasStarted(true)).catch(err => console.log(err));
       }
-      if (waterRef.current && !hasStarted) {
-        waterRef.current.play().catch(err => console.log(err));
-      }
+      
     };
     playAudio();
     window.addEventListener('click', playAudio);
@@ -45,9 +39,7 @@ export default function BackgroundMusic() {
       if (musicRef.current) {
         musicRef.current.muted = !detail.musicOn;
       }
-      if (waterRef.current) {
-        waterRef.current.muted = !detail.musicOn;
-      }
+      
     };
     window.addEventListener('settingsChanged', handler);
     return () => window.removeEventListener('settingsChanged', handler);
@@ -88,7 +80,7 @@ export default function BackgroundMusic() {
   return (
     <div className="absolute top-4 right-4 z-30 flex flex-col items-center gap-1 bg-black/70 p-2 rounded-lg pointer-events-auto border-2 border-gray-600">
       <audio ref={musicRef} src="/assets/audio/gameaudio.mp3" loop />
-      <audio ref={waterRef} src="/assets/audio/water.mp3" loop />
+
 
       <div className="text-white text-[9px]" style={{ fontFamily: '"Press Start 2P", monospace' }}>
         VOL
@@ -138,4 +130,7 @@ export default function BackgroundMusic() {
     </div>
   );
 }
+
+
+
 
