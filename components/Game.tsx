@@ -887,8 +887,8 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
 
       if (statsRef.current.health <= 0) { onGameOver(); return; }
 
-      if (time % 1200 === 0 && !isFoggy && Math.random() < 0.4) { isFoggy = true; fogTimer = 800 + Math.random() * 600; }
-      if (isFoggy) { fogIntensity = Math.min(0.5, fogIntensity + 0.004); fogTimer--; if (fogTimer <= 0) isFoggy = false; } else { fogIntensity = Math.max(0, fogIntensity - 0.005); }
+      if (time % 1200 === 0 && !isFoggy && Math.random() < 0) { isFoggy = true; fogTimer = 800 + Math.random() * 600; }
+      if (isFoggy) { fogIntensity = Math.min(0.02, fogIntensity + 0.004); fogTimer--; if (fogTimer <= 0) isFoggy = false; } else { fogIntensity = Math.max(0, fogIntensity - 0.005); }
       rainTimer++;
       if (!isRaining && rainTimer > 600 + Math.random() * 600) { isRaining = true; rainTimer = 0; }
       else if (isRaining && rainTimer > 900 + Math.random() * 600) { isRaining = false; rainTimer = 0; }
@@ -2863,7 +2863,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       }
 
       if (isRaining) {
-        ctx.strokeStyle = 'rgba(200, 220, 255, 0.6)'; ctx.lineWidth = 1;
+        var rA = 0.75 + darkness * 0.25; ctx.strokeStyle = darkness > 0.3 ? 'rgba(255, 255, 255, ' + rA + ')' : 'rgba(200, 220, 255, ' + rA + ')'; ctx.lineWidth = 1.8;
         raindrops.forEach((drop) => { ctx.beginPath(); ctx.moveTo(drop.x, drop.y); ctx.lineTo(drop.x, drop.y + drop.length); ctx.stroke(); drop.y += drop.speed; if (drop.y > 600) { drop.y = -20; drop.x = Math.random() * 800; } });
       }
 
@@ -2889,7 +2889,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         }
 
         // Position: starts at left-top, arcs over, ends at right-top
-        const arcX = 120 + arcT * 560;
+        const arcX = isDay ? (680 - arcT * 560) : (120 + arcT * 560);
         // Goes DOWN then UP (visually arcs like a hill) — peaks at top
         // arcT 0 = top-left, 0.5 = middle-lowest, 1.0 = top-right
         const arcY = 15 + Math.sin(arcT * Math.PI) * 85;
@@ -3101,6 +3101,9 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
     </div>
   );
 }
+
+
+
 
 
 
