@@ -2454,6 +2454,46 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       ctx.beginPath(); ctx.moveTo(rx - 2, ry + rh * 0.25); ctx.lineTo(rx + rw + 2, ry + rh * 0.25); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(rx - 2, ry + rh * 0.75); ctx.lineTo(rx + rw + 2, ry + rh * 0.75); ctx.stroke();
 
+      // CAMPFIRE ON RAFT
+      var _hasCampfireDraw = (typeof window !== 'undefined' ? (window as any).__hasCampfireRef : false);
+      if (_hasCampfireDraw) {
+        var _fx = rx + 15;
+        var _fy = ry + rh - 15;
+        var _flicker = 0.85 + Math.sin(time * 0.3) * 0.15;
+        var _flicker2 = 0.9 + Math.sin(time * 0.47) * 0.1;
+        var _glow = ctx.createRadialGradient(_fx, _fy, 2, _fx, _fy, 55);
+        _glow.addColorStop(0, 'rgba(255, 220, 120, ' + (0.6 * _flicker) + ')');
+        _glow.addColorStop(1, 'rgba(255, 140, 30, 0)');
+        ctx.fillStyle = _glow;
+        ctx.beginPath(); ctx.arc(_fx, _fy, 55, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#5D3A0F';
+        ctx.save(); ctx.translate(_fx, _fy); ctx.rotate(0.5);
+        ctx.fillRect(-9, -2, 18, 4); ctx.rotate(-1.0); ctx.fillRect(-9, -2, 18, 4);
+        ctx.restore();
+        ctx.fillStyle = 'rgba(255, 90, 20, ' + (0.9 * _flicker) + ')';
+        ctx.beginPath(); ctx.moveTo(_fx - 6, _fy - 2);
+        ctx.quadraticCurveTo(_fx - 4, _fy - 14 * _flicker2, _fx, _fy - 18 * _flicker);
+        ctx.quadraticCurveTo(_fx + 4, _fy - 14 * _flicker2, _fx + 6, _fy - 2);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = 'rgba(255, 170, 40, ' + (0.9 * _flicker2) + ')';
+        ctx.beginPath(); ctx.moveTo(_fx - 4, _fy - 2);
+        ctx.quadraticCurveTo(_fx - 2, _fy - 10 * _flicker, _fx, _fy - 13 * _flicker2);
+        ctx.quadraticCurveTo(_fx + 2, _fy - 10 * _flicker, _fx + 4, _fy - 2);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = 'rgba(255, 240, 180, ' + _flicker + ')';
+        ctx.beginPath(); ctx.moveTo(_fx - 2, _fy - 2);
+        ctx.quadraticCurveTo(_fx - 1, _fy - 6 * _flicker2, _fx, _fy - 8 * _flicker);
+        ctx.quadraticCurveTo(_fx + 1, _fy - 6 * _flicker2, _fx + 2, _fy - 2);
+        ctx.closePath(); ctx.fill();
+        for (var _sp = 0; _sp < 3; _sp++) {
+          var _spAge = (time * 2 + _sp * 30) % 60;
+          var _spY = _fy - 10 - _spAge * 0.4;
+          var _spA = 1 - _spAge / 60;
+          ctx.fillStyle = 'rgba(255, 200, 80, ' + _spA + ')';
+          ctx.beginPath(); ctx.arc(_fx + Math.sin(time * 0.1 + _sp) * 3, _spY, 1, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+
       ctx.strokeStyle = '#5D3A0F';
       ctx.lineWidth = 2;
       ctx.strokeRect(rx, ry, rw, rh);
@@ -2999,6 +3039,26 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       // DARKNESS v2
       if (darkness > 0.02) {
         ctx.fillStyle = 'rgba(8, 12, 35, ' + (darkness * 0.5) + ')';
+
+      // CAMPFIRE LIGHT PIERCES NIGHT DARKNESS
+      var _hasFireL = (typeof window !== 'undefined' ? (window as any).__hasCampfireRef : false);
+      if (_hasFireL && darkness > 0.05) {
+        var _rlx = raftRef.current.x + raftBobX + 15;
+        var _rly = getRaftScreenY() + raftRef.current.height - 15;
+        var _lightR = 150 + Math.sin(time * 0.2) * 15;
+        var _la = darkness * 0.7;
+        var _lightGrad = ctx.createRadialGradient(_rlx, _rly, 8, _rlx, _rly, _lightR);
+        _lightGrad.addColorStop(0, 'rgba(255, 220, 140, ' + _la + ')');
+        _lightGrad.addColorStop(0.4, 'rgba(255, 180, 90, ' + (_la * 0.6) + ')');
+        _lightGrad.addColorStop(1, 'rgba(255, 120, 40, 0)');
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = _lightGrad;
+        ctx.beginPath();
+        ctx.arc(_rlx, _rly, _lightR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
         ctx.fillRect(0, 0, 800, 600);
       }
 
@@ -3109,6 +3169,8 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
     </div>
   );
 }
+
+
 
 
 
