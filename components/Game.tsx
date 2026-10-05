@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 
 type GameProps = {
-  onStatsUpdate: (stats: { health: number; hunger: number; fish: number; day: number; wood: number; plastic: number }) => void;
+  onStatsUpdate: (stats: { health: number; hunger: number; thirst: number; fish: number; day: number; wood: number; plastic: number; raftHealth: number }) => void;
   craftAction: { type: string; id: number } | null;
   onCraftComplete: () => void;
   raftWidth: number;
@@ -81,7 +81,7 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const waveSoundRef = useRef<{ noiseSource: AudioBufferSourceNode; lfo: OscillatorNode; } | null>(null);
-  const statsRef = useRef({ health: 5, hunger: 100, fish: 0, day: 1, wood: 0, plastic: 0 });
+  const statsRef = useRef({ health: 5, hunger: 100, thirst: 100, fish: 0, day: 1, wood: 0, plastic: 0, raftHealth: 100 });
   const raftRef = useRef({ x: 400 - RAFT_WIDTH / 2, y: RAFT_CENTER_Y, width: RAFT_WIDTH, height: 150 });
 
   const playerStateRef = useRef(playerState);
@@ -127,8 +127,9 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
       (window as any).__hasSpearRef = hasSpear;
       (window as any).__hasHammerRef = hasHammer;
       (window as any).__hasCampfireRef = hasCampfire;
+      (window as any).__hasRainBarrelRef = hasRainBarrel;
     }
-  }, [walls, roofs, floors, hasRod, hasSpear, hasHammer, hasCampfire]);
+  }, [walls, roofs, floors, hasRod, hasSpear, hasHammer, hasCampfire, hasRainBarrel]);
 
   // Water waves ambient sound
   useEffect(() => {
@@ -646,6 +647,13 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         state: 'swimming',
         bitesLeft: 3,
         attachSide: 1,
+        sizeCategory: 'medium',
+        mouthOpen: 0,
+        eatingCooldown: 0,
+        targetFoodIndex: -1,
+        restTimer: 0,
+        attachFacing: 0,
+        graceTimer: 0,
         offsetX: 0,
         offsetY: 0,
         hasAttached: false, isGolden: Math.random() < 0.06,
@@ -887,6 +895,16 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
 
       statsRef.current.hunger -= 0.005;
       if (statsRef.current.hunger < 0) statsRef.current.hunger = 0;
+      statsRef.current.thirst -= 0.004;
+      if (statsRef.current.thirst < 0) statsRef.current.thirst = 0;
+      if (statsRef.current.thirst === 0) {
+        statsRef.current.health -= 0.003 * DIFF.damageMult;
+        if (statsRef.current.health < 0) statsRef.current.health = 0;
+      }
+      if (isRaining && (window as any).__hasRainBarrelRef && barrelWater < 100) {
+        barrelWater = Math.min(100, barrelWater + 0.05);
+        (window as any).__barrelWater = barrelWater;
+      }
       if (statsRef.current.hunger === 0) {
         statsRef.current.health -= 0.003 * DIFF.damageMult;
         if (statsRef.current.health < 0) statsRef.current.health = 0;
@@ -1157,6 +1175,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
 
       if (attackTimer > 0) attackTimer--;
       if (eatCooldown > 0) eatCooldown--;
+      if (cookingTimer > 0) cookingTimer--;
       if ((typeof window !== 'undefined' ? (window as any).__hasSpearRef : false) && keys.Space && attackTimer === 0) {
         attackTimer = 30;
         playChopSound();
@@ -1168,9 +1187,24 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
             if (s) { s.frogsKilled = (s.frogsKilled || 0) + 1; saveAchStats(s); }
           }
         }
+        // KRAKEN SPEAR HIT (independent of shark)
+        if (kraken && kraken.state !== 'dying' && Math.abs(kraken.x - (player.x + player.width / 2)) < 120) {
+          kraken.hp--;
+          kraken.hitFlash = 20;
+          if (kraken.hp <= 0) {
+            statsRef.current.wood += 40;
+            statsRef.current.plastic += 25;
+            statsRef.current.fish += 5;
+            statsRef.current.health = 100;
+            statsRef.current.hunger = 100;
+            (window as any).__chestMessage = { text: 'KRAKEN DEFEATED!', time: 180 };
+            onStatsUpdate({ ...statsRef.current });
+            kraken.state = 'dying';
+            kraken.timer = 0;
+          }
+        }
         if (shark && shark.x < player.x + 120 && shark.x + shark.width > player.x - 40) {
           shark.health--;
-          if (kraken && Math.abs(kraken.x - (player.x + player.width / 2)) < 120) { kraken.hp--; kraken.hitFlash = 20; if (kraken.hp <= 0) { statsRef.current.wood += 40; statsRef.current.plastic += 25; statsRef.current.fish += 5; statsRef.current.health = 5; statsRef.current.hunger = 100; (window as any).__chestMessage = { text: 'KRAKEN DEFEATED!', time: 180 }; onStatsUpdate({ ...statsRef.current }); kraken.state = 'dying'; kraken.timer = 0; } }
           if (shark.health <= 0) { 
             shark = null; 
             const s = loadAchStats();
@@ -3187,6 +3221,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       // DARKNESS v2
       if (darkness > 0.02) {
         ctx.fillStyle = 'rgba(8, 12, 35, ' + (darkness * 0.5) + ')';
+        ctx.fillRect(0, 0, 800, 600);
 
       // CAMPFIRE LIGHT PIERCES NIGHT DARKNESS
       var _hasFireL = (typeof window !== 'undefined' ? (window as any).__hasCampfireRef : false);
@@ -3207,7 +3242,6 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         ctx.fill();
         ctx.restore();
       }
-        ctx.fillRect(0, 0, 800, 600);
       }
 
       // STARS v2 (small, twinkling, slow drift)
@@ -3317,6 +3351,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
     </div>
   );
 }
+
 
 
 
