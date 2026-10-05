@@ -488,6 +488,9 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     window.addEventListener('keyup', handleKeyUp);
     
     let time = 0;
+    let fpsFrameCount = 0;
+    let fpsLastCheck = 0;
+    let fpsValue = 60;
     let animationFrameId: number;
     let lastStatsUpdate = 0;
     let invulnerabilityTimer = 0;
@@ -860,6 +863,8 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       // ===== END CLOUDS =====
 
             time += 1;
+      fpsFrameCount++;
+      if (time - fpsLastCheck >= 30) { fpsValue = Math.round(fpsFrameCount * 60 / (time - fpsLastCheck)); fpsFrameCount = 0; fpsLastCheck = time; }
       if (startupRiseOffset > 0) startupRiseOffset -= 2.5;
       
       const DAY_LENGTH = 60 * 60 * 2;
@@ -3169,6 +3174,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
     </div>
   );
 }
+
 
 
 
