@@ -1,42 +1,50 @@
-﻿'use client';
+'use client';
 
 import React, { useEffect, useState } from 'react';
+
+type Difficulty = 'easy' | 'normal' | 'hard';
+
+type Settings = { musicOn: boolean; sfxOn: boolean; showFps: boolean; difficulty: Difficulty };
+
+function loadSettings(): Settings {
+  const fallback: Settings = { musicOn: true, sfxOn: true, showFps: false, difficulty: 'normal' };
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const raw = localStorage.getItem('raftSettings');
+    if (!raw) return fallback;
+    const data = JSON.parse(raw);
+    return {
+      musicOn: data.musicOn ?? true,
+      sfxOn: data.sfxOn ?? true,
+      showFps: data.showFps ?? false,
+      difficulty: data.difficulty ?? 'normal',
+    };
+  } catch {
+    return fallback;
+  }
+}
 
 interface SettingsMenuProps {
   onClose: () => void;
 }
 
 export default function SettingsMenu({ onClose }: SettingsMenuProps) {
-  const [musicOn, setMusicOn] = useState(true);
-  const [sfxOn, setSfxOn] = useState(true);
-  const [showFps, setShowFps] = useState(false);
-  const [difficulty, setDifficulty] = useState<'easy' | 'normal' | 'hard'>('normal');
+  const [musicOn, setMusicOn] = useState(() => loadSettings().musicOn);
+  const [sfxOn, setSfxOn] = useState(() => loadSettings().sfxOn);
+  const [showFps, setShowFps] = useState(() => loadSettings().showFps);
+  const [difficulty, setDifficulty] = useState<Difficulty>(() => loadSettings().difficulty);
 
-  // Load saved settings
-  useEffect(() => {
-    const saved = localStorage.getItem('raftSettings');
-    if (saved) {
-      try {
-        const data = JSON.parse(saved);
-        setMusicOn(data.musicOn ?? true);
-        setSfxOn(data.sfxOn ?? true);
-        setShowFps(data.showFps ?? false);
-        setDifficulty(data.difficulty ?? 'normal');
-      } catch (e) { /* ignore */ }
-    }
-  }, []);
-
-  // Save settings whenever they change
+  // Persist settings whenever they change and mirror them to the game loop.
   useEffect(() => {
     const data = { musicOn, sfxOn, showFps, difficulty };
     localStorage.setItem('raftSettings', JSON.stringify(data));
 
     // Apply music toggle via global (BackgroundMusic reads this)
     if (typeof window !== 'undefined') {
-      (window as any).__musicEnabled = musicOn;
-      (window as any).__sfxEnabled = sfxOn; // __sfxWindowGlobal
-      (window as any).__showFps = showFps;
-      (window as any).__difficulty = difficulty;
+      window.__musicEnabled = musicOn;
+      window.__sfxEnabled = sfxOn;
+      window.__showFps = showFps;
+      window.__difficulty = difficulty;
 
       // Dispatch event so BackgroundMusic can react immediately
       window.dispatchEvent(new CustomEvent('settingsChanged', { detail: data }));

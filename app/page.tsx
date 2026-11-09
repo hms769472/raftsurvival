@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useCallback, useEffect } from 'react';
 import MainMenu from '@/components/MainMenu';
@@ -43,9 +43,13 @@ export default function Home() {
   const [gameScale, setGameScale] = useState(1);
   const [barrelWater, setBarrelWater] = useState(0);
 
-  // Check for existing save on mount
+  // Check for existing save after mount (deferred so we never call setState
+  // synchronously inside an effect, which would trigger cascading renders).
   useEffect(() => {
-    if (localStorage.getItem('raftSave')) setHasSave(true);
+    const id = window.setTimeout(() => {
+      setHasSave(!!localStorage.getItem('raftSave'));
+    }, 0);
+    return () => window.clearTimeout(id);
   }, []);
 
   // Compute scale to fill viewport keeping 4:3 aspect ratio
@@ -63,12 +67,11 @@ export default function Home() {
   // Poll barrel water from game (Game exposes it via window.__barrelWater)
   useEffect(() => {
     const interval = setInterval(() => {
-      if (typeof window !== 'undefined' && (window as any).__barrelWater !== undefined) {
-        setBarrelWater((window as any).__barrelWater);
-      }
+      const w = window.__barrelWater;
+      if (typeof w === 'number') setBarrelWater(w);
     }, 200);
     return () => clearInterval(interval);
-  }, []); // __barrelWaterPolling
+  }, []);
 
   // ESC key handler
   useEffect(() => {
@@ -94,10 +97,7 @@ export default function Home() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [scene, gameOver]);
 
-  // Raft expansion
-  useEffect(() => {
-    if (craftAction?.type === 'EXPAND') setRaftWidth(prev => prev + 40);
-  }, [craftAction]);
+  // Raft expansion (handled directly in handleCraft to avoid a state-sync effect)
 
   const handleStatsUpdate = useCallback((stats: { health: number; hunger: number; thirst: number; fish: number; day: number; wood: number; plastic: number; raftHealth: number }) => {
     setHealth(stats.health);
@@ -119,24 +119,21 @@ export default function Home() {
     if (type === 'WALL') setWalls(prev => Math.min(prev + 1, 4));
     if (type === 'ROOF') setRoofs(prev => Math.min(prev + 1, 1));
     if (type === 'FLOOR') setFloors(prev => Math.min(prev + 1, 2));
+    if (type === 'EXPAND') setRaftWidth(prev => prev + 40);
     setCraftAction({ type, id: Date.now() });
   };
 
   const handleCraftComplete = useCallback(() => setCraftAction(null), []);
 
-  const handleCook = () => { if (typeof window !== 'undefined' && (window as any).__cookFish) { (window as any).__cookFish(); } };
-  const handleEatCooked = () => { if (typeof window !== 'undefined' && (window as any).__eatCookedFish) { (window as any).__eatCookedFish(); } };
+  const handleCook = () => { window.__cookFish?.(); };
+  const handleEatCooked = () => { window.__eatCookedFish?.(); };
 
   const handleEat = () => {
-    if (typeof window !== 'undefined' && (window as any).__eatFishFromGame) {
-      (window as any).__eatFishFromGame();
-    }
+    window.__eatFishFromGame?.();
   };
 
   const handleDrink = () => {
-    if (typeof window !== 'undefined' && (window as any).__drinkWaterFromGame) {
-      (window as any).__drinkWaterFromGame();
-    }
+    window.__drinkWaterFromGame?.();
   };
 
   const handleAttack = () => {
@@ -159,10 +156,10 @@ export default function Home() {
 
   const handleGameOver = useCallback(() => {
     try {
-      var stats = JSON.parse(localStorage.getItem('raftAchStats') || '{}');
-      var earned = Math.floor(day * 5) + Math.floor((stats.totalFishEaten || 0) * 0.5);
+      const stats = JSON.parse(localStorage.getItem('raftAchStats') || '{}');
+      const earned = Math.floor(day * 5) + Math.floor((stats.totalFishEaten || 0) * 0.5);
       if (earned > 0) {
-        var current = parseInt(localStorage.getItem('raftCoins') || '0');
+        const current = parseInt(localStorage.getItem('raftCoins') || '0');
         localStorage.setItem('raftCoins', String(current + earned));
       }
     } catch (e) {}

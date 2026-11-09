@@ -1,21 +1,26 @@
-﻿'use client';
+'use client';
 
-import React, { useEffect, useState } from 'react';
-import { ACHIEVEMENTS, AchievementStats } from '@/lib/achievements';
+import { useState } from 'react';
+import { ACHIEVEMENTS } from '@/lib/achievements';
 
 interface AchievementsPanelProps {
   onClose: () => void;
 }
 
-export default function AchievementsPanel({ onClose }: AchievementsPanelProps) {
-  const [unlocked, setUnlocked] = useState<string[]>([]);
-
-  useEffect(() => {
+function loadUnlocked(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
     const saved = localStorage.getItem('raftAchievements');
     if (saved) {
-      try { setUnlocked(JSON.parse(saved)); } catch {}
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) return parsed;
     }
-  }, []);
+  } catch {}
+  return [];
+}
+
+export default function AchievementsPanel({ onClose }: AchievementsPanelProps) {
+  const [unlocked] = useState<string[]>(loadUnlocked);
 
   return (
     <div className="flex flex-col items-center justify-center h-screen bg-[#2D8FBD] relative overflow-hidden">

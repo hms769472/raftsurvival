@@ -1,5 +1,5 @@
-﻿'use client';
-import React, { useEffect, useState } from 'react';
+'use client';
+import { useState } from 'react';
 
 interface SaveSlotsProps {
   mode: 'save' | 'load';
@@ -7,29 +7,42 @@ interface SaveSlotsProps {
   onSelect: (slot: number) => void;
 }
 
-export default function SaveSlots({ mode, onClose, onSelect }: SaveSlotsProps) {
-  const [slots, setSlots] = useState<any[]>([]);
+interface SaveSlot {
+  slot: number;
+  exists: boolean;
+  day: number;
+  health: number;
+  wood: number;
+  plastic: number;
+  savedAt: string;
+}
 
-  useEffect(() => {
-    const list: any[] = [];
-    for (let i = 1; i <= 3; i++) {
-      const data = localStorage.getItem('raftSave_' + i);
-      if (data) {
-        try {
-          const d = JSON.parse(data);
-          list.push({ slot: i, exists: true, day: d.day, health: d.health, wood: d.wood, plastic: d.plastic, savedAt: d.savedAt });
-        } catch { list.push({ slot: i, exists: false }); }
-      } else {
-        list.push({ slot: i, exists: false });
-      }
+const EMPTY_SLOT = (slot: number): SaveSlot => ({ slot, exists: false, day: 0, health: 0, wood: 0, plastic: 0, savedAt: '' });
+
+function loadSlots(): SaveSlot[] {
+  const list: SaveSlot[] = [];
+  for (let i = 1; i <= 3; i++) {
+    if (typeof window === 'undefined') { list.push(EMPTY_SLOT(i)); continue; }
+    const data = localStorage.getItem('raftSave_' + i);
+    if (data) {
+      try {
+        const d = JSON.parse(data);
+        list.push({ slot: i, exists: true, day: d.day, health: d.health, wood: d.wood, plastic: d.plastic, savedAt: d.savedAt });
+      } catch { list.push(EMPTY_SLOT(i)); }
+    } else {
+      list.push(EMPTY_SLOT(i));
     }
-    setSlots(list);
-  }, []);
+  }
+  return list;
+}
+
+export default function SaveSlots({ mode, onClose, onSelect }: SaveSlotsProps) {
+  const [slots, setSlots] = useState<SaveSlot[]>(loadSlots);
 
   const handleDelete = (slot: number) => {
     if (confirm('Delete this save?')) {
       localStorage.removeItem('raftSave_' + slot);
-      setSlots(prev => prev.map(s => s.slot === slot ? { slot, exists: false } : s));
+      setSlots(prev => prev.map(s => s.slot === slot ? EMPTY_SLOT(slot) : s));
     }
   };
 

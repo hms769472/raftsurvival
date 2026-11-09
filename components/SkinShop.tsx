@@ -1,12 +1,20 @@
-﻿'use client';
+'use client';
 
-import React, { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 interface SkinShopProps {
   onClose: () => void;
 }
 
-const SKINS = [
+interface ShopSkin {
+  id: string;
+  name: string;
+  cost: number;
+  color: string;
+  accent: string;
+}
+
+const SKINS: ShopSkin[] = [
   { id: 'default', name: 'Classic Wood', cost: 0, color: '#8B4513', accent: '#A0522D' },
   { id: 'dark', name: 'Dark Oak', cost: 50, color: '#3E2723', accent: '#5D4037' },
   { id: 'bamboo', name: 'Bamboo', cost: 100, color: '#F9A825', accent: '#FBC02D' },
@@ -17,19 +25,43 @@ const SKINS = [
   { id: 'dragon', name: 'Dragon Scale', cost: 1000, color: '#1B5E20', accent: '#4CAF50' },
 ];
 
-export default function SkinShop({ onClose }: SkinShopProps) {
-  const [coins, setCoins] = useState(0);
-  const [owned, setOwned] = useState<string[]>(['default']);
-  const [selected, setSelected] = useState('default');
-
-  useEffect(() => {
+function loadCoins(): number {
+  if (typeof window === 'undefined') return 0;
+  try {
     const c = localStorage.getItem('raftCoins');
+    if (c) {
+      const n = parseInt(c, 10);
+      if (!Number.isNaN(n)) return n;
+    }
+  } catch {}
+  return 0;
+}
+
+function loadOwned(): string[] {
+  if (typeof window === 'undefined') return ['default'];
+  try {
     const o = localStorage.getItem('raftOwnedSkins');
+    if (o) {
+      const parsed = JSON.parse(o);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return ['default'];
+}
+
+function loadSelected(): string {
+  if (typeof window === 'undefined') return 'default';
+  try {
     const s = localStorage.getItem('raftSelectedSkin');
-    if (c) setCoins(parseInt(c));
-    if (o) { try { setOwned(JSON.parse(o)); } catch {} }
-    if (s) setSelected(s);
-  }, []);
+    if (s) return s;
+  } catch {}
+  return 'default';
+}
+
+export default function SkinShop({ onClose }: SkinShopProps) {
+  const [coins, setCoins] = useState(loadCoins);
+  const [owned, setOwned] = useState<string[]>(loadOwned);
+  const [selected, setSelected] = useState(loadSelected);
 
   const save = (newCoins: number, newOwned: string[], newSelected: string) => {
     localStorage.setItem('raftCoins', String(newCoins));
@@ -37,7 +69,7 @@ export default function SkinShop({ onClose }: SkinShopProps) {
     localStorage.setItem('raftSelectedSkin', newSelected);
   };
 
-  const buy = (skin: any) => {
+  const buy = (skin: ShopSkin) => {
     if (owned.includes(skin.id)) {
       setSelected(skin.id);
       save(coins, owned, skin.id);

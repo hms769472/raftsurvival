@@ -1,6 +1,16 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useRef } from 'react';
+import { MS_PER_FRAME } from '@/lib/balance';
+import {
+  DEFAULT_ACH_STATS,
+  normalizeAchStats,
+  syncAchStats,
+  findNewlyUnlocked,
+  type AchDifficulty,
+} from '@/lib/systems/achievements';
+import type { AchievementStats } from '@/lib/achievements';
+import type { SkinDefinition } from '@/types/game-globals';
 
 type GameProps = {
   onStatsUpdate: (stats: { health: number; hunger: number; thirst: number; fish: number; day: number; wood: number; plastic: number; raftHealth: number }) => void;
@@ -11,6 +21,7 @@ type GameProps = {
   hasSpear: boolean;
   hasHammer: boolean;
   hasCampfire: boolean;
+  hasRainBarrel: boolean;
   walls: number;
   roofs: number;
   floors: number;
@@ -72,12 +83,13 @@ type Fish = {
   hasAttached: boolean;
 };
 type WakeParticle = { x: number; y: number; size: number; speed: number; alpha: number; life: number; };
+type Kraken = { x: number; y: number; hp: number; maxHp: number; state: 'rising' | 'attacking' | 'dying'; timer: number; hitFlash: number; };
 
 const RAFT_WIDTH = 80;
 const RAFT_CENTER_Y = 300;
 const WORLD_SCROLL_SPEED = 2.2;
 
-export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raftWidth, hasRod, hasSpear, hasHammer, hasCampfire, walls, roofs, floors, gameOver, onGameOver, playerState }: GameProps) {
+export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raftWidth, hasRod, hasSpear, hasHammer, hasCampfire, hasRainBarrel, walls, roofs, floors, gameOver, onGameOver, playerState }: GameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const waveSoundRef = useRef<{ noiseSource: AudioBufferSourceNode; lfo: OscillatorNode; } | null>(null);
@@ -92,42 +104,17 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     raftRef.current.x = 400 - RAFT_WIDTH / 2;
   }, [raftWidth]);
 
-  useEffect(() => {
-    if (!craftAction) return;
-    if (craftAction.type === 'REPAIR') {
-      if (statsRef.current.wood >= 5) { statsRef.current.wood -= 5; statsRef.current.health = 5; }
-    } else if (craftAction.type === 'EXPAND') {
-      if (statsRef.current.wood >= 10 && statsRef.current.plastic >= 5) { statsRef.current.wood -= 10; statsRef.current.plastic -= 5; raftRef.current.height += 40; }
-    } else if (craftAction.type === 'ROD') {
-      if (statsRef.current.wood >= 5) { statsRef.current.wood -= 5; }
-    } else if (craftAction.type === 'SPEAR') {
-      if (statsRef.current.wood >= 8) { statsRef.current.wood -= 8; }
-    } else if (craftAction.type === 'HAMMER') {
-      if (statsRef.current.wood >= 8) { statsRef.current.wood -= 8; }
-    } else if (craftAction.type === 'WALL') {
-      if (statsRef.current.wood >= 5) { statsRef.current.wood -= 5; }
-    } else if (craftAction.type === 'ROOF') {
-      if (statsRef.current.wood >= 3 && statsRef.current.plastic >= 2) { statsRef.current.wood -= 3; statsRef.current.plastic -= 2; }
-    } else if (craftAction.type === 'FLOOR') {
-      if (statsRef.current.wood >= 4) { statsRef.current.wood -= 4; }
-    }
-    // Immediately update the HUD with new resource counts
-    playCraftSound(); // __craftSoundPlayed
-    onStatsUpdate({ ...statsRef.current });
-    onCraftComplete();
-  }, [craftAction, onCraftComplete]);
-
   // Keep building refs in sync when props change
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      (window as any).__wallsRef = walls;
-      (window as any).__roofsRef = roofs;
-      (window as any).__floorsRef = floors;
-      (window as any).__hasRodRef = hasRod;
-      (window as any).__hasSpearRef = hasSpear;
-      (window as any).__hasHammerRef = hasHammer;
-      (window as any).__hasCampfireRef = hasCampfire;
-      (window as any).__hasRainBarrelRef = hasRainBarrel;
+      window.__wallsRef = walls;
+      window.__roofsRef = roofs;
+      window.__floorsRef = floors;
+      window.__hasRodRef = hasRod;
+      window.__hasSpearRef = hasSpear;
+      window.__hasHammerRef = hasHammer;
+      window.__hasCampfireRef = hasCampfire;
+      window.__hasRainBarrelRef = hasRainBarrel;
     }
   }, [walls, roofs, floors, hasRod, hasSpear, hasHammer, hasCampfire, hasRainBarrel]);
 
@@ -136,7 +123,7 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     const startWaveSound = () => {
       try {
         if (!audioCtxRef.current) {
-          audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+          audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
         }
         const audioCtx = audioCtxRef.current;
         if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -194,14 +181,14 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
       // ===== SOUND EFFECTS (all Web Audio API) =====
     const getAudioCtx = () => {
       if (!audioCtxRef.current) {
-        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
       }
       if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
       return audioCtxRef.current;
     };
     const isSfxEnabled = () => {
       if (typeof window === 'undefined') return true;
-      return (window as any).__sfxEnabled !== false;
+      return window.__sfxEnabled !== false;
     };
 
     const playFootstepSound = () => {
@@ -346,60 +333,53 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     };
 
         // ===== ACHIEVEMENT TRACKING =====
-    const loadAchStats = () => {
-      if (typeof window === 'undefined') return null;
+    const loadAchStats = (): AchievementStats => {
+      if (typeof window === 'undefined') return { ...DEFAULT_ACH_STATS };
       const saved = localStorage.getItem('raftAchStats');
-      if (saved) { try { return JSON.parse(saved); } catch { return null; } }
-      return {
-        totalFishEaten: 0, totalWood: 0, totalPlastic: 0, daysSurvived: 0,
-        sharksDefeated: 0, frogsKilled: 0, maxHunger: 100, maxThirst: 100,
-        builtWalls: 0, builtRoof: 0, builtBarrel: 0, islandsCollected: 0,
-        maxRaftHealth: 100, difficulty: 'normal', timePlayed: 0,
-      };
+      if (saved) {
+        try { return normalizeAchStats(JSON.parse(saved)); } catch { return { ...DEFAULT_ACH_STATS }; }
+      }
+      return { ...DEFAULT_ACH_STATS };
     };
-    const saveAchStats = (s: any) => {
+    const saveAchStats = (s: AchievementStats) => {
       if (typeof window === 'undefined') return;
-      localStorage.setItem('raftAchStats', JSON.stringify(s));
+      try { localStorage.setItem('raftAchStats', JSON.stringify(s)); } catch { /* ignore */ }
     };
-    const checkAchievements = () => {
-      const stats = loadAchStats();
-      if (!stats) return;
-      // Sync current values
-      stats.daysSurvived = Math.max(stats.daysSurvived, Math.floor(time / (60 * 60 * 5)) + 1);
-      stats.maxHunger = Math.max(stats.maxHunger, statsRef.current.hunger);
-      stats.maxThirst = Math.max(stats.maxThirst, statsRef.current.thirst);
-      stats.maxRaftHealth = Math.max(stats.maxRaftHealth, statsRef.current.raftHealth);
-      stats.difficulty = diff;
-      stats.timePlayed = (stats.timePlayed || 0) + 16; // ~16ms per frame at 60fps
-
-      const unlockedList: string[] = (() => {
-        try {
-          return JSON.parse(localStorage.getItem('raftAchievements') || '[]');
-        } catch { return []; }
-      })();
-
-      const { ACHIEVEMENTS } = require('@/lib/achievements');
-      ACHIEVEMENTS.forEach((a: any) => {
-        if (!unlockedList.includes(a.id) && a.condition(stats)) {
-          unlockedList.push(a.id);
-          // Fire toast event
-          window.dispatchEvent(new CustomEvent('achievementUnlocked', {
-            detail: { emoji: a.emoji, name: a.name, description: a.description }
-          }));
-        }
+    const loadUnlockedAchievements = (): string[] => {
+      if (typeof window === 'undefined') return [];
+      try { return JSON.parse(localStorage.getItem('raftAchievements') || '[]'); } catch { return []; }
+    };
+    // Pure-derived check: takes elapsed frames + difficulty + elapsed ms so it
+    // never depends on the game-loop closure scope.
+    const checkAchievements = (elapsedFrames: number, difficulty: AchDifficulty, elapsedMs: number) => {
+      if (typeof window === 'undefined') return;
+      const synced = syncAchStats(loadAchStats(), {
+        elapsedFrames,
+        hunger: statsRef.current.hunger,
+        thirst: statsRef.current.thirst,
+        raftHealth: statsRef.current.raftHealth,
+        difficulty,
+        elapsedMs,
       });
-      localStorage.setItem('raftAchievements', JSON.stringify(unlockedList));
-      saveAchStats(stats);
+      const unlockedList = loadUnlockedAchievements();
+      const newlyUnlocked = findNewlyUnlocked(synced, unlockedList);
+      newlyUnlocked.forEach((a) => {
+        unlockedList.push(a.id);
+        window.dispatchEvent(new CustomEvent('achievementUnlocked', {
+          detail: { emoji: a.emoji, name: a.name, description: a.description },
+        }));
+      });
+      try { localStorage.setItem('raftAchievements', JSON.stringify(unlockedList)); } catch { /* ignore */ }
+      saveAchStats(synced);
     };
-    // Check every 5 seconds
-    let lastAchCheck = 0;
+    // Cadence (every ~5s + key events) is driven from inside the main loop.
 
-    const playThunderSound = () => { try { if (!audioCtxRef.current) { audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)(); } const ctx = audioCtxRef.current; if (ctx.state === 'suspended') ctx.resume(); const now = ctx.currentTime; const noise = ctx.createBufferSource(); const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate); const data = buf.getChannelData(0); for (let i = 0; i < data.length; i++) { const t = i / data.length; const env = Math.pow(1 - t, 1.5); data[i] = (Math.random() * 2 - 1) * env; } noise.buffer = buf; const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.setValueAtTime(180, now); filter.frequency.exponentialRampToValueAtTime(50, now + 1.8); filter.Q.value = 2; const gain = ctx.createGain(); gain.gain.setValueAtTime(0.001, now); gain.gain.exponentialRampToValueAtTime(0.35, now + 0.1); gain.gain.exponentialRampToValueAtTime(0.15, now + 0.5); gain.gain.exponentialRampToValueAtTime(0.001, now + 1.8); noise.connect(filter); filter.connect(gain); gain.connect(ctx.destination); noise.start(now); const rumble = ctx.createOscillator(); rumble.type = 'sine'; rumble.frequency.setValueAtTime(45, now); rumble.frequency.exponentialRampToValueAtTime(25, now + 1.8); const rumbleGain = ctx.createGain(); rumbleGain.gain.setValueAtTime(0.2, now); rumbleGain.gain.exponentialRampToValueAtTime(0.001, now + 1.8); rumble.connect(rumbleGain); rumbleGain.connect(ctx.destination); rumble.start(now); rumble.stop(now + 1.8); } catch (e) {} };
+    const playThunderSound = () => { try { if (!audioCtxRef.current) { audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)(); } const ctx = audioCtxRef.current; if (ctx.state === 'suspended') ctx.resume(); const now = ctx.currentTime; const noise = ctx.createBufferSource(); const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate); const data = buf.getChannelData(0); for (let i = 0; i < data.length; i++) { const t = i / data.length; const env = Math.pow(1 - t, 1.5); data[i] = (Math.random() * 2 - 1) * env; } noise.buffer = buf; const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.setValueAtTime(180, now); filter.frequency.exponentialRampToValueAtTime(50, now + 1.8); filter.Q.value = 2; const gain = ctx.createGain(); gain.gain.setValueAtTime(0.001, now); gain.gain.exponentialRampToValueAtTime(0.35, now + 0.1); gain.gain.exponentialRampToValueAtTime(0.15, now + 0.5); gain.gain.exponentialRampToValueAtTime(0.001, now + 1.8); noise.connect(filter); filter.connect(gain); gain.connect(ctx.destination); noise.start(now); const rumble = ctx.createOscillator(); rumble.type = 'sine'; rumble.frequency.setValueAtTime(45, now); rumble.frequency.exponentialRampToValueAtTime(25, now + 1.8); const rumbleGain = ctx.createGain(); rumbleGain.gain.setValueAtTime(0.2, now); rumbleGain.gain.exponentialRampToValueAtTime(0.001, now + 1.8); rumble.connect(rumbleGain); rumbleGain.connect(ctx.destination); rumble.start(now); rumble.stop(now + 1.8); } catch (e) {} };
 
     const playDamageSound = () => {
     try {
       if (!audioCtxRef.current) {
-        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
       }
       const audioCtx = audioCtxRef.current;
       if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -420,6 +400,33 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     } catch (e) { console.log('Audio error:', e); }
   };
 
+  // Handle craft actions after the sound helpers are declared so the
+  // craft SFX is in scope. Deducts resources, plays SFX and refreshes HUD.
+  useEffect(() => {
+    if (!craftAction) return;
+    if (craftAction.type === 'REPAIR') {
+      if (statsRef.current.wood >= 5) { statsRef.current.wood -= 5; statsRef.current.health = 5; }
+    } else if (craftAction.type === 'EXPAND') {
+      if (statsRef.current.wood >= 10 && statsRef.current.plastic >= 5) { statsRef.current.wood -= 10; statsRef.current.plastic -= 5; raftRef.current.height += 40; }
+    } else if (craftAction.type === 'ROD') {
+      if (statsRef.current.wood >= 5) { statsRef.current.wood -= 5; }
+    } else if (craftAction.type === 'SPEAR') {
+      if (statsRef.current.wood >= 8) { statsRef.current.wood -= 8; }
+    } else if (craftAction.type === 'HAMMER') {
+      if (statsRef.current.wood >= 8) { statsRef.current.wood -= 8; }
+    } else if (craftAction.type === 'WALL') {
+      if (statsRef.current.wood >= 5) { statsRef.current.wood -= 5; }
+    } else if (craftAction.type === 'ROOF') {
+      if (statsRef.current.wood >= 3 && statsRef.current.plastic >= 2) { statsRef.current.wood -= 3; statsRef.current.plastic -= 2; }
+    } else if (craftAction.type === 'FLOOR') {
+      if (statsRef.current.wood >= 4) { statsRef.current.wood -= 4; }
+    }
+    // Immediately update the HUD with new resource counts
+    playCraftSound(); // __craftSoundPlayed
+    onStatsUpdate({ ...statsRef.current });
+    onCraftComplete();
+  }, [craftAction, onCraftComplete]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -435,16 +442,16 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     const player = { x: 380, y: RAFT_CENTER_Y + 20 + 300, width: 40, height: 80 };
     const keys = { ArrowLeft: false, ArrowRight: false, ArrowUp: false, ArrowDown: false, F: false, Space: false, H: false };
     
-    let frogs: Frog[] = [];
-    let projectiles: Projectile[] = [];
-    let raindrops: Raindrop[] = [];
-    let items: Item[] = [];
+    const frogs: Frog[] = [];
+    const projectiles: Projectile[] = [];
+    const raindrops: Raindrop[] = [];
+    const items: Item[] = [];
     let shark: Shark | null = null;
-    let waveStreaks: WaveStreak[] = [];
-    let wakeParticles: WakeParticle[] = [];
-    let fishes: Fish[] = [];
-    let goldFishCount = 0;
-    let fishFoods: FishFood[] = [];
+    const waveStreaks: WaveStreak[] = [];
+    const wakeParticles: WakeParticle[] = [];
+    const fishes: Fish[] = [];
+    const goldFishCount = 0;
+    const fishFoods: FishFood[] = [];
 
     // === KEYBOARD HANDLERS ===
     const spawnProjectile = (frog: Frog) => {
@@ -489,6 +496,7 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     window.addEventListener('keyup', handleKeyUp);
     
     let time = 0;
+    let lastAchCheck = 0;
     let fpsFrameCount = 0;
     let fpsLastCheck = 0;
     let fpsValue = 60;
@@ -501,7 +509,7 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     let isRaining = false;
     let weatherType: 'clear' | 'rain' | 'snow' | 'heat' = 'clear';
     let weatherTimer = 0;
-    let snowflakes: { x: number; y: number; size: number; speed: number; drift: number; }[] = [];
+    const snowflakes: { x: number; y: number; size: number; speed: number; drift: number; }[] = [];
     let isFoggy = false;
     let fogTimer = 0;
     let fogIntensity = 0;
@@ -510,10 +518,10 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     let attackTimer = 0;
     let eatCooldown = 0;
     // SKIN COLORS
-    const SKIN_MAP: any = { 'default': { c: '#8B4513', a: '#A0522D' }, 'dark': { c: '#3E2723', a: '#5D4037' }, 'bamboo': { c: '#F9A825', a: '#FBC02D' }, 'ice': { c: '#B3E5FC', a: '#E1F5FE' }, 'lava': { c: '#BF360C', a: '#E64A19' }, 'gold': { c: '#FFD700', a: '#FFF176' }, 'neon': { c: '#9C27B0', a: '#E040FB' }, 'dragon': { c: '#1B5E20', a: '#4CAF50' } };
+    const SKIN_MAP: Record<string, SkinDefinition> = { 'default': { c: '#8B4513', a: '#A0522D' }, 'dark': { c: '#3E2723', a: '#5D4037' }, 'bamboo': { c: '#F9A825', a: '#FBC02D' }, 'ice': { c: '#B3E5FC', a: '#E1F5FE' }, 'lava': { c: '#BF360C', a: '#E64A19' }, 'gold': { c: '#FFD700', a: '#FFF176' }, 'neon': { c: '#9C27B0', a: '#E040FB' }, 'dragon': { c: '#1B5E20', a: '#4CAF50' } };
     let activeSkin = 'default';
     try { const s = localStorage.getItem('raftSelectedSkin'); if (s && SKIN_MAP[s]) activeSkin = s; } catch (e) {}
-    let kraken: { x: number; y: number; hp: number; maxHp: number; state: 'rising' | 'attacking' | 'dying'; timer: number; hitFlash: number; } | null = null;
+    let kraken: Kraken | null = null;
     let krakenTimer = 0;
     let cookedFish = 0;
     let cookingTimer = 0;
@@ -559,14 +567,14 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
         sharkRetreatMult: 0.6,  // Shark returns 40% faster
       },
     }[diff];
-    let islands: Island[] = [];
-    let shipwreckTimer = 0;
-    let chests: TreasureChest[] = [];
-    let shipwrecks: { x: number; y: number; vx: number; vy: number; size: number; rotation: number; life: number; looted: boolean; }[] = [];
-    let clouds: { x: number; y: number; size: number; speed: number; alpha: number; vx?: number; vy?: number; }[] = [];
-    let cloudSpawnTimer = 0;
-    let splashParticles: { x: number; y: number; vx: number; vy: number; life: number; size: number; }[] = [];
-    let raftPuddles: { x: number; y: number; size: number; age: number; }[] = [];
+    const islands: Island[] = [];
+    const shipwreckTimer = 0;
+    const chests: TreasureChest[] = [];
+    const shipwrecks: { x: number; y: number; vx: number; vy: number; size: number; rotation: number; life: number; looted: boolean; }[] = [];
+    const clouds: { x: number; y: number; size: number; speed: number; alpha: number; vx?: number; vy?: number; }[] = [];
+    const cloudSpawnTimer = 0;
+    const splashParticles: { x: number; y: number; vx: number; vy: number; life: number; size: number; }[] = [];
+    const raftPuddles: { x: number; y: number; size: number; age: number; }[] = [];
 
     let damageFlash = 0;
     let damageCooldown = 0;
@@ -593,7 +601,7 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     let hookY = 0;
     let hookThrowProgress = 0;
     let hookCooldown = 0;
-    let hookTargetItem: any = null;
+    let hookTargetItem: Item | null = null;
     let fishingTimer = 0;
     let bobberX = 0;
     let bobberY = 0;
@@ -813,7 +821,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
 
     // Expose eat function to parent — React state can't touch statsRef directly
     if (typeof window !== 'undefined') {
-      (window as any).__eatFishFromGame = () => { console.log('[EAT RAW] clicked, fish=' + statsRef.current.fish);
+      window.__eatFishFromGame = () => { console.log('[EAT RAW] clicked, fish=' + statsRef.current.fish);
         if (statsRef.current.fish > 0) {
           statsRef.current.fish -= 1;
           statsRef.current.hunger = Math.min(100, statsRef.current.hunger + 40);
@@ -821,16 +829,16 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
           onStatsUpdate({ ...statsRef.current });
         }
       };
-      (window as any).__drinkWaterFromGame = () => { if (barrelWater >= 30 && statsRef.current.thirst < 100) { barrelWater -= 30; statsRef.current.thirst = Math.min(100, statsRef.current.thirst + 40); (window as any).__barrelWater = barrelWater; onStatsUpdate({ ...statsRef.current }); } };
-      (window as any).__cookFish = () => { console.log('[COOK] clicked, hasFire=' + (window as any).__hasCampfireRef + ' fish=' + statsRef.current.fish); var hasFire = (window as any).__hasCampfireRef; if (hasFire && statsRef.current.fish > 0 && cookingTimer <= 0) { statsRef.current.fish -= 1; cookedFish += 1; cookingTimer = 180; onStatsUpdate({ ...statsRef.current }); } };
-      (window as any).__eatCookedFish = () => { console.log('[EAT COOKED] clicked, cookedFish=' + cookedFish); if (cookedFish > 0) { cookedFish -= 1; statsRef.current.hunger = Math.min(100, statsRef.current.hunger + 60); onStatsUpdate({ ...statsRef.current }); } };
+      window.__drinkWaterFromGame = () => { if (barrelWater >= 30 && statsRef.current.thirst < 100) { barrelWater -= 30; statsRef.current.thirst = Math.min(100, statsRef.current.thirst + 40); window.__barrelWater = barrelWater; onStatsUpdate({ ...statsRef.current }); } };
+      window.__cookFish = () => { console.log('[COOK] clicked, hasFire=' + window.__hasCampfireRef + ' fish=' + statsRef.current.fish); const hasFire = window.__hasCampfireRef; if (hasFire && statsRef.current.fish > 0 && cookingTimer <= 0) { statsRef.current.fish -= 1; cookedFish += 1; cookingTimer = 180; onStatsUpdate({ ...statsRef.current }); } };
+      window.__eatCookedFish = () => { console.log('[EAT COOKED] clicked, cookedFish=' + cookedFish); if (cookedFish > 0) { cookedFish -= 1; statsRef.current.hunger = Math.min(100, statsRef.current.hunger + 60); onStatsUpdate({ ...statsRef.current }); } };
     }
 
     const update = () => {
       if (gameOver) return;
 // ===== CLOUDS =====
-      if (isRaining && !(window as any).__wasRaining) {
-        (window as any).__wasRaining = true;
+      if (isRaining && !window.__wasRaining) {
+        window.__wasRaining = true;
         for (let cc = 0; cc < 6; cc++) {
           const fromLeft = cc % 2 === 0;
           clouds.push({
@@ -844,7 +852,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
           });
         }
       }
-      if (!isRaining && (window as any).__wasRaining) { (window as any).__wasRaining = false; }
+      if (!isRaining && window.__wasRaining) { window.__wasRaining = false; }
       if (isRaining && clouds.length < 8 && time % 90 === 0) {
         const fromLeft = Math.random() < 0.5;
         clouds.push({
@@ -875,6 +883,11 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       // ===== END CLOUDS =====
 
             time += 1;
+      // RAFT-002/003: achievement checks run every ~5s (300 frames) plus on key events.
+      if (time - lastAchCheck >= 300) {
+        checkAchievements(time, diff, (time - lastAchCheck) * MS_PER_FRAME);
+        lastAchCheck = time;
+      }
       fpsFrameCount++;
       if (time - fpsLastCheck >= 30) { fpsValue = Math.round(fpsFrameCount * 60 / (time - fpsLastCheck)); fpsFrameCount = 0; fpsLastCheck = time; }
       if (startupRiseOffset > 0) startupRiseOffset -= 2.5;
@@ -901,9 +914,9 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         statsRef.current.health -= 0.003 * DIFF.damageMult;
         if (statsRef.current.health < 0) statsRef.current.health = 0;
       }
-      if (isRaining && (window as any).__hasRainBarrelRef && barrelWater < 100) {
+      if (isRaining && window.__hasRainBarrelRef && barrelWater < 100) {
         barrelWater = Math.min(100, barrelWater + 0.05);
-        (window as any).__barrelWater = barrelWater;
+        window.__barrelWater = barrelWater;
       }
       if (statsRef.current.hunger === 0) {
         statsRef.current.health -= 0.003 * DIFF.damageMult;
@@ -952,7 +965,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       // WEATHER CYCLE
       weatherTimer++;
       if (weatherTimer > 1200 && weatherType === 'clear') {
-        var wRoll = Math.random();
+        const wRoll = Math.random();
         if (wRoll < 0.45) { weatherType = 'rain'; isRaining = true; }
         else if (wRoll < 0.75) { weatherType = 'snow'; isRaining = false; }
         else { weatherType = 'heat'; isRaining = false; }
@@ -966,8 +979,8 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       else if (isRaining && rainTimer > 900 + Math.random() * 600) { isRaining = false; rainTimer = 0; }
       lightningTimer++;
       // ===== CLOUDS =====
-      if (isRaining && !(window as any).__wasRaining) { (window as any).__wasRaining = true; for (let cc = 0; cc < 8; cc++) { const side = cc % 2; if (side === 0) clouds.push({ x: -80, y: 20 + Math.random() * 90, size: 20 + Math.random() * 10, speed: 0, alpha: 0, vx: 0.4 + Math.random() * 0.25, vy: 0 }); else if (side === 1) clouds.push({ x: 880, y: 20 + Math.random() * 90, size: 20 + Math.random() * 10, speed: 0, alpha: 0, vx: -(0.4 + Math.random() * 0.25), vy: 0 }); else clouds.push({ x: 100 + Math.random() * 600, y: -60, size: 20 + Math.random() * 10, speed: 0, alpha: 0, vx: (Math.random() - 0.5) * 0.6, vy: 1.5 + Math.random() * 0.8 }); } }
-      if (!isRaining && (window as any).__wasRaining) { (window as any).__wasRaining = false; }
+      if (isRaining && !window.__wasRaining) { window.__wasRaining = true; for (let cc = 0; cc < 8; cc++) { const side = cc % 2; if (side === 0) clouds.push({ x: -80, y: 20 + Math.random() * 90, size: 20 + Math.random() * 10, speed: 0, alpha: 0, vx: 0.4 + Math.random() * 0.25, vy: 0 }); else if (side === 1) clouds.push({ x: 880, y: 20 + Math.random() * 90, size: 20 + Math.random() * 10, speed: 0, alpha: 0, vx: -(0.4 + Math.random() * 0.25), vy: 0 }); else clouds.push({ x: 100 + Math.random() * 600, y: -60, size: 20 + Math.random() * 10, speed: 0, alpha: 0, vx: (Math.random() - 0.5) * 0.6, vy: 1.5 + Math.random() * 0.8 }); } }
+      if (!isRaining && window.__wasRaining) { window.__wasRaining = false; }
       if (isRaining && clouds.length < 14 && time % 30 === 0) { const side = Math.floor(Math.random() * 2); if (side === 0) clouds.push({ x: -80, y: 20 + Math.random() * 90, size: 20 + Math.random() * 10, speed: 0, alpha: 0, vx: 0.4 + Math.random() * 0.25, vy: 0 }); else if (side === 1) clouds.push({ x: 880, y: 20 + Math.random() * 90, size: 20 + Math.random() * 10, speed: 0, alpha: 0, vx: -(0.4 + Math.random() * 0.25), vy: 0 }); else clouds.push({ x: 100 + Math.random() * 600, y: -60, size: 20 + Math.random() * 10, speed: 0, alpha: 0, vx: (Math.random() - 0.5) * 0.6, vy: 1.5 }); }
       for (let ci = clouds.length - 1; ci >= 0; ci--) { const c = clouds[ci]; if (c.vx === undefined) c.vx = c.speed; if (c.vy === undefined) c.vy = 0; c.x += c.vx; c.y += c.vy; if (isRaining) c.alpha = Math.min(0.85, c.alpha + 0.03); else c.alpha -= 0.02; if (c.x > 1100 || c.x < -300 || c.y > 700 || c.y < -300 || c.alpha <= 0) clouds.splice(ci, 1); }
       // ===== END CLOUDS =====
@@ -1148,7 +1161,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         if (statsRef.current.health < 5) statsRef.current.health += regenRate;
       }
 
-      if ((typeof window !== 'undefined' ? (window as any).__hasRodRef : false) && keys.F && fishingState === 'idle') {
+      if ((typeof window !== 'undefined' ? window.__hasRodRef : false) && keys.F && fishingState === 'idle') {
         fishingState = 'casting'; fishingTimer = 30;
         bobberX = player.x + player.width / 2 + (Math.random() > 0.5 ? 60 : -60); bobberY = raftScreenY + raftRef.current.height + 60 + Math.random() * 40;
       }
@@ -1176,7 +1189,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       if (attackTimer > 0) attackTimer--;
       if (eatCooldown > 0) eatCooldown--;
       if (cookingTimer > 0) cookingTimer--;
-      if ((typeof window !== 'undefined' ? (window as any).__hasSpearRef : false) && keys.Space && attackTimer === 0) {
+      if ((typeof window !== 'undefined' ? window.__hasSpearRef : false) && keys.Space && attackTimer === 0) {
         attackTimer = 30;
         playChopSound();
         for (let i = frogs.length - 1; i >= 0; i--) {
@@ -1197,7 +1210,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
             statsRef.current.fish += 5;
             statsRef.current.health = 100;
             statsRef.current.hunger = 100;
-            (window as any).__chestMessage = { text: 'KRAKEN DEFEATED!', time: 180 };
+            window.__chestMessage = { text: 'KRAKEN DEFEATED!', time: 180 };
             onStatsUpdate({ ...statsRef.current });
             kraken.state = 'dying';
             kraken.timer = 0;
@@ -2008,11 +2021,11 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       ctx.stroke();
 
       // === BODY (scaled ellipse) ===
-      if (fish.isGolden) { var gGrad = ctx.createRadialGradient(0, -hh * 0.3, 0, 0, 0, hw * 1.2); gGrad.addColorStop(0, '#FFF8DC'); gGrad.addColorStop(0.4, '#FFD700'); gGrad.addColorStop(1, '#B8860B'); ctx.fillStyle = gGrad; } else { ctx.fillStyle = fish.color; }
+      if (fish.isGolden) { const gGrad = ctx.createRadialGradient(0, -hh * 0.3, 0, 0, 0, hw * 1.2); gGrad.addColorStop(0, '#FFF8DC'); gGrad.addColorStop(0.4, '#FFD700'); gGrad.addColorStop(1, '#B8860B'); ctx.fillStyle = gGrad; } else { ctx.fillStyle = fish.color; }
       ctx.beginPath();
       ctx.ellipse(0, 0, hw, hh, 0, 0, Math.PI * 2);
       ctx.fill();
-      if (fish.isGolden) { ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(0, 0, hw, hh, 0, 0, Math.PI * 2); ctx.stroke(); for (var gsp = 0; gsp < 3; gsp++) { var gAng = time * 0.05 + gsp * 2.09; ctx.fillStyle = 'rgba(255, 240, 150, ' + (0.7 + Math.sin(time * 0.1 + gsp) * 0.3) + ')'; ctx.beginPath(); ctx.arc(Math.cos(gAng) * hw * 1.3, Math.sin(gAng) * hh * 1.3, 1.5, 0, Math.PI * 2); ctx.fill(); } }
+      if (fish.isGolden) { ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(0, 0, hw, hh, 0, 0, Math.PI * 2); ctx.stroke(); for (let gsp = 0; gsp < 3; gsp++) { const gAng = time * 0.05 + gsp * 2.09; ctx.fillStyle = 'rgba(255, 240, 150, ' + (0.7 + Math.sin(time * 0.1 + gsp) * 0.3) + ')'; ctx.beginPath(); ctx.arc(Math.cos(gAng) * hw * 1.3, Math.sin(gAng) * hh * 1.3, 1.5, 0, Math.PI * 2); ctx.fill(); } }
 
       // === BELLY (lighter bottom half) ===
       ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
@@ -2463,14 +2476,14 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       const raftLevel = Math.max(1, Math.floor((rh - 150) / 40) + 1);
       // RAFT LEVEL BADGE
       if (raftLevel >= 2) {
-        var _lvX = rx + rw / 2;
-        var _lvY = ry - 12;
+        const _lvX = rx + rw / 2;
+        const _lvY = ry - 12;
         ctx.font = 'bold 9px "Press Start 2P", monospace';
         ctx.textAlign = 'center';
         ctx.strokeStyle = '#000';
         ctx.lineWidth = 3;
         ctx.strokeText('LV ' + raftLevel, _lvX, _lvY);
-        var _lvColor = raftLevel >= 5 ? '#FFD700' : raftLevel >= 4 ? '#E74C3C' : raftLevel >= 3 ? '#3498DB' : '#2ECC71';
+        const _lvColor = raftLevel >= 5 ? '#FFD700' : raftLevel >= 4 ? '#E74C3C' : raftLevel >= 3 ? '#3498DB' : '#2ECC71';
         ctx.fillStyle = _lvColor;
         ctx.fillText('LV ' + raftLevel, _lvX, _lvY);
         ctx.textAlign = 'start';
@@ -2510,9 +2523,9 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       ctx.fill();
 
       // === FLOOR EXTENSIONS (widens the raft) ===
-      const _floors = (typeof window !== 'undefined' ? (window as any).__floorsRef : 0) || 0;
-      const _walls = (typeof window !== 'undefined' ? (window as any).__wallsRef : 0) || 0;
-      const _roofs = (typeof window !== 'undefined' ? (window as any).__roofsRef : 0) || 0;
+      const _floors = (typeof window !== 'undefined' ? window.__floorsRef : 0) || 0;
+      const _walls = (typeof window !== 'undefined' ? window.__wallsRef : 0) || 0;
+      const _roofs = (typeof window !== 'undefined' ? window.__roofsRef : 0) || 0;
       
       if (_floors > 0) {
         ctx.fillStyle = '#7A3B10';
@@ -2527,7 +2540,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       }
 
       // Main raft body
-      var sk = SKIN_MAP[activeSkin] || SKIN_MAP['default'];
+      const sk = SKIN_MAP[activeSkin] || SKIN_MAP['default'];
       ctx.fillStyle = sk.c;
       ctx.fillRect(rx, ry, rw, rh);
       ctx.fillStyle = sk.a;
@@ -2551,13 +2564,13 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       ctx.beginPath(); ctx.moveTo(rx - 2, ry + rh * 0.75); ctx.lineTo(rx + rw + 2, ry + rh * 0.75); ctx.stroke();
 
       // CAMPFIRE ON RAFT
-      var _hasCampfireDraw = (typeof window !== 'undefined' ? (window as any).__hasCampfireRef : false);
+      const _hasCampfireDraw = (typeof window !== 'undefined' ? window.__hasCampfireRef : false);
       if (_hasCampfireDraw) {
-        var _fx = rx + 15;
-        var _fy = ry + rh - 15;
-        var _flicker = 0.85 + Math.sin(time * 0.3) * 0.15;
-        var _flicker2 = 0.9 + Math.sin(time * 0.47) * 0.1;
-        var _glow = ctx.createRadialGradient(_fx, _fy, 2, _fx, _fy, 55);
+        const _fx = rx + 15;
+        const _fy = ry + rh - 15;
+        const _flicker = 0.85 + Math.sin(time * 0.3) * 0.15;
+        const _flicker2 = 0.9 + Math.sin(time * 0.47) * 0.1;
+        const _glow = ctx.createRadialGradient(_fx, _fy, 2, _fx, _fy, 55);
         _glow.addColorStop(0, 'rgba(255, 220, 120, ' + (0.6 * _flicker) + ')');
         _glow.addColorStop(1, 'rgba(255, 140, 30, 0)');
         ctx.fillStyle = _glow;
@@ -2581,10 +2594,10 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         ctx.quadraticCurveTo(_fx - 1, _fy - 6 * _flicker2, _fx, _fy - 8 * _flicker);
         ctx.quadraticCurveTo(_fx + 1, _fy - 6 * _flicker2, _fx + 2, _fy - 2);
         ctx.closePath(); ctx.fill();
-        for (var _sp = 0; _sp < 3; _sp++) {
-          var _spAge = (time * 2 + _sp * 30) % 60;
-          var _spY = _fy - 10 - _spAge * 0.4;
-          var _spA = 1 - _spAge / 60;
+        for (let _sp = 0; _sp < 3; _sp++) {
+          const _spAge = (time * 2 + _sp * 30) % 60;
+          const _spY = _fy - 10 - _spAge * 0.4;
+          const _spA = 1 - _spAge / 60;
           ctx.fillStyle = 'rgba(255, 200, 80, ' + _spA + ')';
           ctx.beginPath(); ctx.arc(_fx + Math.sin(time * 0.1 + _sp) * 3, _spY, 1, 0, Math.PI * 2); ctx.fill();
         }
@@ -2732,21 +2745,21 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       }
     };
 
-    const drawKraken = (kr: any) => {
-      var kx = kr.x; var ky = kr.y;
-      var wobble = Math.sin(time * 0.08) * 8;
-      var isHit = kr.hitFlash > 0;
-      var bodyColor = isHit ? '#FF6B6B' : '#5D3A9C';
-      var darkColor = isHit ? '#B71C1C' : '#3A2258';
+    const drawKraken = (kr: Kraken) => {
+      const kx = kr.x; const ky = kr.y;
+      const wobble = Math.sin(time * 0.08) * 8;
+      const isHit = kr.hitFlash > 0;
+      const bodyColor = isHit ? '#FF6B6B' : '#5D3A9C';
+      const darkColor = isHit ? '#B71C1C' : '#3A2258';
       ctx.fillStyle = 'rgba(200, 230, 255, 0.5)';
       ctx.beginPath(); ctx.ellipse(kx, ky + 40, 100, 20, 0, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = bodyColor;
       ctx.beginPath(); ctx.ellipse(kx, ky, 55, 70, 0, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = darkColor;
       ctx.beginPath(); ctx.ellipse(kx, ky + 15, 45, 50, 0, 0, Math.PI * 2); ctx.fill();
-      for (var ti = 0; ti < 4; ti++) {
-        var side = ti < 2 ? -1 : 1; var ti2 = ti % 2;
-        var baseY = ky + 10 + ti2 * 25;
+      for (let ti = 0; ti < 4; ti++) {
+        const side = ti < 2 ? -1 : 1; const ti2 = ti % 2;
+        const baseY = ky + 10 + ti2 * 25;
         ctx.strokeStyle = bodyColor; ctx.lineWidth = 10 - ti2 * 2; ctx.lineCap = 'round';
         ctx.beginPath(); ctx.moveTo(kx + side * 40, baseY);
         ctx.bezierCurveTo(kx + side * (70 + ti2 * 10), baseY + 10 + wobble, kx + side * (55 + ti2 * 5), baseY + 40 + wobble, kx + side * (80 + ti2 * 10), baseY + 60 + wobble * 0.5);
@@ -2768,12 +2781,12 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       ctx.beginPath(); ctx.moveTo(kx + 32, ky - 28); ctx.lineTo(kx + 10, ky - 22); ctx.stroke();
       ctx.fillStyle = '#000';
       ctx.beginPath(); ctx.moveTo(kx - 8, ky + 25); ctx.lineTo(kx, ky + 40); ctx.lineTo(kx + 8, ky + 25); ctx.closePath(); ctx.fill();
-      var barW = 120; var barH = 10;
-      var barX = kx - barW / 2; var barY = ky - 100;
+      const barW = 120; const barH = 10;
+      const barX = kx - barW / 2; const barY = ky - 100;
       ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'; ctx.fillRect(barX - 2, barY - 2, barW + 4, barH + 4);
       ctx.fillStyle = '#333'; ctx.fillRect(barX, barY, barW, barH);
-      var hpW = (kr.hp / kr.maxHp) * barW;
-      var hpColor = kr.hp > 3 ? '#2ECC71' : kr.hp > 1 ? '#F39C12' : '#E74C3C';
+      const hpW = (kr.hp / kr.maxHp) * barW;
+      const hpColor = kr.hp > 3 ? '#2ECC71' : kr.hp > 1 ? '#F39C12' : '#E74C3C';
       ctx.fillStyle = hpColor; ctx.fillRect(barX, barY, hpW, barH);
       ctx.font = 'bold 12px "Press Start 2P", monospace'; ctx.textAlign = 'center';
       ctx.strokeStyle = '#000'; ctx.lineWidth = 4; ctx.strokeText('KRAKEN', kx, barY - 8);
@@ -2860,7 +2873,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       if (kraken) drawKraken(kraken);
 
       // === FISHING ROD (visible in player's hand) ===
-      if ((typeof window !== 'undefined' ? (window as any).__hasRodRef : false) && playerStateRef.current === 'standing') {
+      if ((typeof window !== 'undefined' ? window.__hasRodRef : false) && playerStateRef.current === 'standing') {
         const handX = player.x + player.width - 4;
         const handY = player.y + 30;
 
@@ -3052,14 +3065,14 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         ctx.fill();
       }
 
-      if ((typeof window !== 'undefined' ? (window as any).__hasSpearRef : false) && attackTimer > 15) {
+      if ((typeof window !== 'undefined' ? window.__hasSpearRef : false) && attackTimer > 15) {
         ctx.strokeStyle = '#D2691E'; ctx.lineWidth = 4;
         ctx.beginPath(); ctx.moveTo(player.x + player.width, player.y + player.height / 2); ctx.lineTo(player.x + player.width + 60, player.y + player.height / 2); ctx.stroke();
         ctx.fillStyle = '#AAAAAA'; ctx.fillRect(player.x + player.width + 60, player.y + player.height / 2 - 4, 12, 8);
       }
 
       if (isRaining) {
-        var rA = 0.75 + darkness * 0.25; ctx.strokeStyle = darkness > 0.3 ? 'rgba(255, 255, 255, ' + rA + ')' : 'rgba(200, 220, 255, ' + rA + ')'; ctx.lineWidth = 1.8;
+        const rA = 0.75 + darkness * 0.25; ctx.strokeStyle = darkness > 0.3 ? 'rgba(255, 255, 255, ' + rA + ')' : 'rgba(200, 220, 255, ' + rA + ')'; ctx.lineWidth = 1.8;
         raindrops.forEach((drop) => { ctx.beginPath(); ctx.moveTo(drop.x, drop.y); ctx.lineTo(drop.x, drop.y + drop.length); ctx.stroke(); drop.y += drop.speed; if (drop.y > 600) { drop.y = -20; drop.x = Math.random() * 800; } });
       }
 
@@ -3068,7 +3081,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       if (isInWater) { ctx.fillStyle = 'rgba(255, 0, 0, 0.15)'; ctx.fillRect(0, 0, 800, 600); }
 
       // Draw clouds
-      for (var _ci = 0; _ci < clouds.length; _ci++) { if (clouds[_ci].alpha > 0.03) drawCloud(clouds[_ci]); }
+      for (let _ci = 0; _ci < clouds.length; _ci++) { if (clouds[_ci].alpha > 0.03) drawCloud(clouds[_ci]); }
 
       // === SUN/MOON (arc from top, disappear upward) ===
       {
@@ -3186,8 +3199,8 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
 
       // SNOW DRAWING
       if (weatherType === 'snow') {
-        for (var _sno = 0; _sno < snowflakes.length; _sno++) {
-          var _sf = snowflakes[_sno];
+        for (let _sno = 0; _sno < snowflakes.length; _sno++) {
+          const _sf = snowflakes[_sno];
           _sf.y += _sf.speed;
           _sf.x += Math.sin(time * 0.02 + _sf.y * 0.01) * 0.5 + _sf.drift;
           if (_sf.y > 600) { _sf.y = -10; _sf.x = Math.random() * 800; }
@@ -3204,13 +3217,13 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       if (weatherType === 'heat') {
         ctx.fillStyle = 'rgba(255, 180, 100, 0.12)';
         ctx.fillRect(0, 0, 800, 600);
-        for (var _hi = 0; _hi < 6; _hi++) {
-          var _hy = ((time * 0.5 + _hi * 100) % 700) - 50;
+        for (let _hi = 0; _hi < 6; _hi++) {
+          const _hy = ((time * 0.5 + _hi * 100) % 700) - 50;
           ctx.strokeStyle = 'rgba(255, 220, 150, ' + (0.08 + Math.sin(time * 0.05 + _hi) * 0.04) + ')';
           ctx.lineWidth = 2;
           ctx.beginPath();
-          for (var _hx = 0; _hx < 800; _hx += 20) {
-            var _wy = _hy + Math.sin(_hx * 0.05 + time * 0.1 + _hi) * 4;
+          for (let _hx = 0; _hx < 800; _hx += 20) {
+            const _wy = _hy + Math.sin(_hx * 0.05 + time * 0.1 + _hi) * 4;
             if (_hx === 0) ctx.moveTo(_hx, _wy);
             else ctx.lineTo(_hx, _wy);
           }
@@ -3224,13 +3237,13 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         ctx.fillRect(0, 0, 800, 600);
 
       // CAMPFIRE LIGHT PIERCES NIGHT DARKNESS
-      var _hasFireL = (typeof window !== 'undefined' ? (window as any).__hasCampfireRef : false);
+      const _hasFireL = (typeof window !== 'undefined' ? window.__hasCampfireRef : false);
       if (_hasFireL && darkness > 0.05) {
-        var _rlx = raftRef.current.x + raftBobX + 15;
-        var _rly = getRaftScreenY() + raftRef.current.height - 15;
-        var _lightR = 150 + Math.sin(time * 0.2) * 15;
-        var _la = darkness * 0.7;
-        var _lightGrad = ctx.createRadialGradient(_rlx, _rly, 8, _rlx, _rly, _lightR);
+        const _rlx = raftRef.current.x + raftBobX + 15;
+        const _rly = getRaftScreenY() + raftRef.current.height - 15;
+        const _lightR = 150 + Math.sin(time * 0.2) * 15;
+        const _la = darkness * 0.7;
+        const _lightGrad = ctx.createRadialGradient(_rlx, _rly, 8, _rlx, _rly, _lightR);
         _lightGrad.addColorStop(0, 'rgba(255, 220, 140, ' + _la + ')');
         _lightGrad.addColorStop(0.4, 'rgba(255, 180, 90, ' + (_la * 0.6) + ')');
         _lightGrad.addColorStop(1, 'rgba(255, 120, 40, 0)');
@@ -3246,16 +3259,16 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
 
       // STARS v2 (small, twinkling, slow drift)
       if (darkness > 0.25 && !isRaining) {
-        var starFade2 = Math.min(1, (darkness - 0.25) / 0.3);
-        for (var s2 = 0; s2 < 90; s2++) {
-          var bX = (s2 * 137 + 41) % 780 + 10;
-          var bY = (s2 * 219 + 73) % 260 + 10;
-          var sDrift2 = ((time * 0.1 + s2 * 25) % 900) * 0.1;
-          var sX = (bX + sDrift2) % 800;
-          var sY = bY;
-          var twinkle2 = Math.sin(time * 0.07 + s2 * 1.7) * 0.5 + 0.5;
-          var size2 = (s2 % 6 === 0) ? 1.5 : 1;
-          var sAlpha2 = starFade2 * (0.5 + twinkle2 * 0.5);
+        const starFade2 = Math.min(1, (darkness - 0.25) / 0.3);
+        for (let s2 = 0; s2 < 90; s2++) {
+          const bX = (s2 * 137 + 41) % 780 + 10;
+          const bY = (s2 * 219 + 73) % 260 + 10;
+          const sDrift2 = ((time * 0.1 + s2 * 25) % 900) * 0.1;
+          const sX = (bX + sDrift2) % 800;
+          const sY = bY;
+          const twinkle2 = Math.sin(time * 0.07 + s2 * 1.7) * 0.5 + 0.5;
+          const size2 = (s2 % 6 === 0) ? 1.5 : 1;
+          const sAlpha2 = starFade2 * (0.5 + twinkle2 * 0.5);
           ctx.fillStyle = 'rgba(255, 255, 255, ' + sAlpha2 + ')';
           ctx.fillRect(sX, sY, size2, size2);
           if (s2 % 15 === 0) {
@@ -3276,13 +3289,13 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       }
 
       // FPS DISPLAY (only if enabled in settings)
-      if (typeof window !== 'undefined' && (window as any).__showFps) {
+      if (typeof window !== 'undefined' && window.__showFps) {
         ctx.font = 'bold 10px Arial';
         ctx.textAlign = 'left';
         ctx.strokeStyle = '#000';
         ctx.lineWidth = 3;
         ctx.strokeText('FPS: ' + fpsValue, 10, 590);
-        var fpsColor = fpsValue >= 50 ? '#2ECC71' : fpsValue >= 30 ? '#F39C12' : '#E74C3C';
+        const fpsColor = fpsValue >= 50 ? '#2ECC71' : fpsValue >= 30 ? '#F39C12' : '#E74C3C';
         ctx.fillStyle = fpsColor;
         ctx.fillText('FPS: ' + fpsValue, 10, 590);
         ctx.textAlign = 'start';

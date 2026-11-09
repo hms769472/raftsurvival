@@ -1,6 +1,6 @@
-﻿'use client';
+'use client';
 
-import React, { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 interface LeaderboardProps {
   onClose: () => void;
@@ -14,15 +14,20 @@ interface ScoreEntry {
   difficulty: string;
 }
 
-export default function Leaderboard({ onClose }: LeaderboardProps) {
-  const [scores, setScores] = useState<ScoreEntry[]>([]);
-
-  useEffect(() => {
+function loadScores(): ScoreEntry[] {
+  if (typeof window === 'undefined') return [];
+  try {
     const saved = localStorage.getItem('raftLeaderboard');
     if (saved) {
-      try { setScores(JSON.parse(saved)); } catch {}
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) return parsed;
     }
-  }, []);
+  } catch {}
+  return [];
+}
+
+export default function Leaderboard({ onClose }: LeaderboardProps) {
+  const [scores] = useState<ScoreEntry[]>(loadScores);
 
   return (
     <div className="flex flex-col items-center justify-center h-screen bg-[#2D8FBD] relative overflow-hidden">
