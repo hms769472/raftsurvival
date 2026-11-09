@@ -10,15 +10,15 @@ Legend: `Todo` · `In progress` · `Done` · `Partial` · `Skipped`
 
 | Key | Title | Status |
 |---|---|---|
-| RAFT-001 | Fix `hasRainBarrel` missing in `GameProps` & destructure | Todo |
-| RAFT-002 | Fix `checkAchievements` scope errors (`time`, `diff`) + replace `require()` with ES import | Todo |
-| RAFT-003 | Call `checkAchievements()` periodically (every ~5s) and on key events | Todo |
-| RAFT-004 | Track missing stats (fish eaten, walls/roof/barrel built, islands, hook pickups) | Todo |
-| RAFT-005 | Unify day length across HUD & achievements (single `DAY_LENGTH` constant) | Todo |
-| RAFT-006 | Fix Load Game: restore Game internal state (stats, `time`, enemies reset) | Todo |
-| RAFT-007 | Autosave every N seconds + save on tab close; add "Continue" | Todo |
-| RAFT-008 | Confirm dialog on ESC/Main Menu ("Save & quit / Quit / Cancel") | Todo |
-| RAFT-009 | Add CI: `tsc --noEmit`, `eslint`, `next build` on every PR | Todo |
+| RAFT-001 | Fix `hasRainBarrel` missing in `GameProps` & destructure | Done |
+| RAFT-002 | Fix `checkAchievements` scope errors (`time`, `diff`) + replace `require()` with ES import | Done |
+| RAFT-003 | Call `checkAchievements()` periodically (every ~5s) and on key events | Done |
+| RAFT-004 | Track missing stats (fish eaten, walls/roof/barrel built, islands, hook pickups) | Partial (islands gated on Phase 3) |
+| RAFT-005 | Unify day length across HUD & achievements (single `DAY_LENGTH` constant) | Done |
+| RAFT-006 | Fix Load Game: restore Game internal state (stats, `time`, enemies reset) | Done |
+| RAFT-007 | Autosave every N seconds + save on tab close; add "Continue" | Done |
+| RAFT-008 | Confirm dialog on ESC/Main Menu ("Save & quit / Quit / Cancel") | Done |
+| RAFT-009 | Add CI: `tsc --noEmit`, `eslint`, `next build` on every PR | Done |
 
 ## Phase 1 — Combat & Threat System (RAFT-E1)
 
