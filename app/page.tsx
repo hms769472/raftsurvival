@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import MainMenu from '@/components/MainMenu';
 import SettingsMenu from '@/components/SettingsMenu';
 import CreditsScreen from '@/components/CreditsScreen';
@@ -13,6 +13,7 @@ import RecipeBook from '@/components/RecipeBook';
 import CraftingMenu from '@/components/CraftingMenu';
 import GameOver from '@/components/GameOver';
 import BackgroundMusic from '@/components/BackgroundMusic';
+import { loadSnapshot, saveSnapshot, hasSnapshot, type GameSnapshot, type SnapshotStore } from '@/lib/save';
 
 export default function Home() {
   const [scene, setScene] = useState<'menu' | 'playing' | 'settings' | 'credits' | 'coop' | 'achievements'>('menu');
@@ -42,12 +43,21 @@ export default function Home() {
   const [playerState, setPlayerState] = useState<'standing' | 'sitting' | 'laying'>('standing');
   const [gameScale, setGameScale] = useState(1);
   const [barrelWater, setBarrelWater] = useState(0);
+  // Snapshot the Game writes every frame; the page persists it on save/autosave.
+  const snapshotStore: SnapshotStore = useRef<GameSnapshot | null>(null);
+  const [initialState, setInitialState] = useState<GameSnapshot | null>(null);
+  const [showPause, setShowPause] = useState(false);
+
+  // Persist the latest autosave.
+  const persist = useCallback(() => {
+    if (snapshotStore.current) saveSnapshot(snapshotStore.current);
+  }, [snapshotStore]);
 
   // Check for existing save after mount (deferred so we never call setState
   // synchronously inside an effect, which would trigger cascading renders).
   useEffect(() => {
     const id = window.setTimeout(() => {
-      setHasSave(!!localStorage.getItem('raftSave'));
+      setHasSave(hasSnapshot());
     }, 0);
     return () => window.clearTimeout(id);
   }, []);
@@ -73,12 +83,27 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
-  // ESC key handler
+  // RAFT-007: autosave every 30s while playing, plus on tab hide/close.
+  useEffect(() => {
+    if (scene !== 'playing') return;
+    const intervalId = window.setInterval(persist, 30000);
+    const flush = () => persist();
+    window.addEventListener('beforeunload', flush);
+    document.addEventListener('visibilitychange', flush);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('beforeunload', flush);
+      document.removeEventListener('visibilitychange', flush);
+    };
+  }, [scene, persist]);
+
+  // RAFT-008: ESC pauses the run and opens the confirm modal instead of quitting directly.
   useEffect(() => {
     const escHandler = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && scene === 'playing' && !gameOver) {
-        setScene('menu');
         setIsCraftingOpen(false);
+        setIsRecipeBookOpen(false);
+        setShowPause(prev => !prev);
       }
     };
     window.addEventListener('keydown', escHandler);
@@ -88,14 +113,15 @@ export default function Home() {
   // Keyboard shortcuts for crafting, sit, lay
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() === 'c' && scene === 'playing' && !gameOver) setIsCraftingOpen(prev => !prev);
-      if (e.key.toLowerCase() === 'r' && scene === 'playing' && !gameOver) setIsRecipeBookOpen(prev => !prev);
-      if (e.key.toLowerCase() === 's' && scene === 'playing' && !gameOver) setPlayerState(prev => prev === 'sitting' ? 'standing' : 'sitting');
-      if (e.key.toLowerCase() === 'l' && scene === 'playing' && !gameOver) setPlayerState(prev => prev === 'laying' ? 'standing' : 'laying');
+      if (scene !== 'playing' || gameOver || showPause) return;
+      if (e.key.toLowerCase() === 'c') setIsCraftingOpen(prev => !prev);
+      if (e.key.toLowerCase() === 'r') setIsRecipeBookOpen(prev => !prev);
+      if (e.key.toLowerCase() === 's') setPlayerState(prev => prev === 'sitting' ? 'standing' : 'sitting');
+      if (e.key.toLowerCase() === 'l') setPlayerState(prev => prev === 'laying' ? 'standing' : 'laying');
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [scene, gameOver]);
+  }, [scene, gameOver, showPause]);
 
   // Raft expansion (handled directly in handleCraft to avoid a state-sync effect)
 
@@ -189,44 +215,65 @@ export default function Home() {
     setPlayerState('standing');
   };
 
-  const handleSaveAndQuit = () => {
-    const saveData = {
-      health, hunger, thirst, fish, day, wood, plastic, raftWidth,
-      hasRod, hasSpear, hasHammer, hasRainBarrel, hasCampfire, walls, roofs, floors, raftHealth,
-    };
-    localStorage.setItem('raftSave', JSON.stringify(saveData));
+  // RAFT-006/007: persist the live snapshot written by <Game> every frame.
+  const handleSaveAndQuit = useCallback(() => {
+    const snap = snapshotStore.current ?? initialState;
+    if (snap) {
+      saveSnapshot(snap);
+      setHasSave(true);
+    }
+    setGameOver(false);
+    setShowPause(false);
+    setScene('menu');
+  }, [snapshotStore, initialState]);
+
+  // RAFT-007: quit without saving (keeps any earlier autosave intact).
+  const handleQuit = useCallback(() => {
+    setGameOver(false);
+    setShowPause(false);
+    setScene('menu');
+  }, []);
+
+  // RAFT-006: restore the exact run from the persisted snapshot.
+  const handleLoadGame = useCallback(() => {
+    const data = loadSnapshot();
+    if (!data) return;
+    // Hydrate React HUD state so the first paint already matches the save.
+    setInitialState(data);
+    setHealth(data.health);
+    setHunger(data.hunger);
+    setThirst(data.thirst);
+    setRaftHealth(data.raftHealth);
+    setFish(data.fish);
+    setDay(data.day);
+    setWood(data.wood);
+    setPlastic(data.plastic);
+    setRaftWidth(data.raftWidth);
+    setHasRod(data.hasRod);
+    setHasSpear(data.hasSpear);
+    setHasHammer(data.hasHammer);
+    setHasRainBarrel(data.hasRainBarrel);
+    setHasCampfire(data.hasCampfire);
+    setWalls(data.walls);
+    setRoofs(data.roofs);
+    setFloors(data.floors);
+    setBarrelWater(data.barrelWater);
     setHasSave(true);
     setGameOver(false);
-    setScene('menu');
-  };
+    setShowPause(false);
+    setPlayerState('standing');
+    setGameId(prev => prev + 1);
+    setScene('playing');
+  }, []);
 
-  const handleLoadGame = () => {
-    const saved = localStorage.getItem('raftSave');
-    if (saved) {
-      const data = JSON.parse(saved);
-      setHealth(data.health);
-      setHunger(data.hunger);
-      setThirst(data.thirst ?? 100);
-      setRaftHealth(data.raftHealth ?? 100);
-      setFish(data.fish);
-      setDay(data.day);
-      setWood(data.wood);
-      setPlastic(data.plastic);
-      setRaftWidth(data.raftWidth || 150);
-      setHasRod(data.hasRod || false);
-      setHasSpear(data.hasSpear || false);
-      setHasHammer(data.hasHammer || false);
-      setHasRainBarrel(data.hasRainBarrel || false);
-      setHasCampfire(data.hasCampfire || false);
-      setWalls(data.walls || 0);
-      setRoofs(data.roofs || 0);
-      setFloors(data.floors || 0);
-      setGameId(prev => prev + 1);
-      setGameOver(false);
-      setPlayerState('standing');
-      setScene('playing');
-    }
-  };
+  // RAFT-007: fresh run — clear any loaded snapshot so <Game> boots from defaults.
+  const handlePlay = useCallback(() => {
+    setInitialState(null);
+    setGameOver(false);
+    setShowPause(false);
+    setPlayerState('standing');
+    setScene('playing');
+  }, []);
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-black relative overflow-hidden">
@@ -240,7 +287,7 @@ export default function Home() {
         <SettingsMenu onClose={() => setScene('menu')} />
       ) : scene === 'menu' ? (
         <MainMenu
-          onPlay={() => { setGameOver(false); setPlayerState('standing'); setScene('playing'); }}
+          onPlay={handlePlay}
           onLoad={handleLoadGame}
           onSettings={() => setScene('settings')}
           onCredits={() => setScene('credits')}
@@ -275,6 +322,9 @@ export default function Home() {
             gameOver={gameOver}
             onGameOver={handleGameOver}
             playerState={playerState}
+            initialState={initialState}
+            snapshotStore={snapshotStore}
+            paused={showPause}
           />
           <HUD
             health={health}
@@ -320,14 +370,47 @@ export default function Home() {
             />
           )}
           {gameOver && <GameOver onRespawn={handleRespawn} onSaveAndQuit={handleSaveAndQuit} />}
+          {showPause && !gameOver && (
+            <div className="absolute inset-0 z-[80] flex items-center justify-center bg-black/70">
+              <div className="bg-[#FFF8DC] border-4 border-[#DAA520] rounded-lg p-6 flex flex-col items-center gap-4 min-w-[320px] shadow-2xl">
+                <h2
+                  className="text-[14px] text-[#8B4513] tracking-widest"
+                  style={{ fontFamily: '"Press Start 2P", monospace' }}
+                >
+                  PAUSED
+                </h2>
+                <button
+                  onClick={handleSaveAndQuit}
+                  className="w-full bg-[#8B4513] hover:bg-[#5D4037] text-white px-4 py-2 rounded text-[10px]"
+                  style={{ fontFamily: '"Press Start 2P", monospace' }}
+                >
+                  SAVE &amp; QUIT
+                </button>
+                <button
+                  onClick={handleQuit}
+                  className="w-full bg-[#8B4513] hover:bg-[#5D4037] text-white px-4 py-2 rounded text-[10px]"
+                  style={{ fontFamily: '"Press Start 2P", monospace' }}
+                >
+                  QUIT
+                </button>
+                <button
+                  onClick={() => setShowPause(false)}
+                  className="w-full bg-[#DAA520] hover:bg-[#B8860B] text-black px-4 py-2 rounded text-[10px]"
+                  style={{ fontFamily: '"Press Start 2P", monospace' }}
+                >
+                  CANCEL
+                </button>
+              </div>
+            </div>
+          )}
           <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-12">
             <BackgroundMusic />
           </div>
           <button
-            onClick={() => { setScene('menu'); setIsCraftingOpen(false); }}
+            onClick={() => { setIsCraftingOpen(false); setShowPause(true); }}
             className="absolute top-2 left-1/2 transform -translate-x-1/2 z-50 pointer-events-auto bg-black/80 hover:bg-black text-white px-4 py-2 rounded text-[12px] border-2 border-yellow-500 cursor-pointer"
           >
-            [ESC] Main Menu
+            [ESC] Pause
           </button>
         </div>
       )}

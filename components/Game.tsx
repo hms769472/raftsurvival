@@ -1,16 +1,19 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { MS_PER_FRAME } from '@/lib/balance';
+import { MS_PER_FRAME, DAY_LENGTH } from '@/lib/balance';
 import {
   DEFAULT_ACH_STATS,
   normalizeAchStats,
   syncAchStats,
   findNewlyUnlocked,
+  bumpAchStats,
   type AchDifficulty,
 } from '@/lib/systems/achievements';
 import type { AchievementStats } from '@/lib/achievements';
 import type { SkinDefinition } from '@/types/game-globals';
+import type { GameSnapshot, SnapshotStore } from '@/lib/save';
+import { SAVE_VERSION } from '@/lib/save';
 
 type GameProps = {
   onStatsUpdate: (stats: { health: number; hunger: number; thirst: number; fish: number; day: number; wood: number; plastic: number; raftHealth: number }) => void;
@@ -28,6 +31,12 @@ type GameProps = {
   gameOver: boolean;
   onGameOver: () => void;
   playerState: 'standing' | 'sitting' | 'laying';
+  /** When provided, the run hydrates from this snapshot on mount (Continue). */
+  initialState?: GameSnapshot | null;
+  /** Live snapshot box the page reads to persist the run. */
+  snapshotStore?: SnapshotStore;
+  /** Freezes simulation while a menu overlay is open. */
+  paused?: boolean;
 };
 
 type Frog = { x: number; y: number; width: number; height: number; shootTimer: number; direction: number; hopPhase: number; };
@@ -89,11 +98,22 @@ const RAFT_WIDTH = 80;
 const RAFT_CENTER_Y = 300;
 const WORLD_SCROLL_SPEED = 2.2;
 
-export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raftWidth, hasRod, hasSpear, hasHammer, hasCampfire, hasRainBarrel, walls, roofs, floors, gameOver, onGameOver, playerState }: GameProps) {
+export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raftWidth, hasRod, hasSpear, hasHammer, hasCampfire, hasRainBarrel, walls, roofs, floors, gameOver, onGameOver, playerState, initialState, snapshotStore, paused }: GameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const waveSoundRef = useRef<{ noiseSource: AudioBufferSourceNode; lfo: OscillatorNode; } | null>(null);
-  const statsRef = useRef({ health: 5, hunger: 100, thirst: 100, fish: 0, day: 1, wood: 0, plastic: 0, raftHealth: 100 });
+  // Hydrated from the loaded snapshot (Continue) so the first HUD push matches
+  // exactly what was saved — no 0/full-value flicker before the loop catches up.
+  const statsRef = useRef({
+    health: initialState?.health ?? 5,
+    hunger: initialState?.hunger ?? 100,
+    thirst: initialState?.thirst ?? 100,
+    fish: initialState?.fish ?? 0,
+    day: initialState?.day ?? 1,
+    wood: initialState?.wood ?? 0,
+    plastic: initialState?.plastic ?? 0,
+    raftHealth: initialState?.raftHealth ?? 100,
+  });
   const raftRef = useRef({ x: 400 - RAFT_WIDTH / 2, y: RAFT_CENTER_Y, width: RAFT_WIDTH, height: 150 });
 
   const playerStateRef = useRef(playerState);
@@ -345,6 +365,10 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
       if (typeof window === 'undefined') return;
       try { localStorage.setItem('raftAchStats', JSON.stringify(s)); } catch { /* ignore */ }
     };
+    // RAFT-004: single entry point for tracking a counter stat.
+    const bumpAch = (key: keyof AchievementStats, delta = 1) => {
+      saveAchStats(bumpAchStats(loadAchStats(), key, delta));
+    };
     const loadUnlockedAchievements = (): string[] => {
       if (typeof window === 'undefined') return [];
       try { return JSON.parse(localStorage.getItem('raftAchievements') || '[]'); } catch { return []; }
@@ -415,11 +439,13 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     } else if (craftAction.type === 'HAMMER') {
       if (statsRef.current.wood >= 8) { statsRef.current.wood -= 8; }
     } else if (craftAction.type === 'WALL') {
-      if (statsRef.current.wood >= 5) { statsRef.current.wood -= 5; }
+      if (statsRef.current.wood >= 5) { statsRef.current.wood -= 5; bumpAch('builtWalls'); }
     } else if (craftAction.type === 'ROOF') {
-      if (statsRef.current.wood >= 3 && statsRef.current.plastic >= 2) { statsRef.current.wood -= 3; statsRef.current.plastic -= 2; }
+      if (statsRef.current.wood >= 3 && statsRef.current.plastic >= 2) { statsRef.current.wood -= 3; statsRef.current.plastic -= 2; bumpAch('builtRoof'); }
     } else if (craftAction.type === 'FLOOR') {
       if (statsRef.current.wood >= 4) { statsRef.current.wood -= 4; }
+    } else if (craftAction.type === 'RAIN_BARREL') {
+      bumpAch('builtBarrel'); // RAFT-004
     }
     // Immediately update the HUD with new resource counts
     playCraftSound(); // __craftSoundPlayed
@@ -495,7 +521,7 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     
-    let time = 0;
+    let time = initialState?.time ?? 0;
     let lastAchCheck = 0;
     let fpsFrameCount = 0;
     let fpsLastCheck = 0;
@@ -523,9 +549,10 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     try { const s = localStorage.getItem('raftSelectedSkin'); if (s && SKIN_MAP[s]) activeSkin = s; } catch (e) {}
     let kraken: Kraken | null = null;
     let krakenTimer = 0;
-    let cookedFish = 0;
+    let cookedFish = initialState?.cookedFish ?? 0;
     let cookingTimer = 0;
-    let barrelWater = 0; // 0-100 — how much water is in the rain barrel
+    let barrelWater = initialState?.barrelWater ?? 0; // 0-100 — how much water is in the rain barrel
+    if (typeof window !== 'undefined') window.__barrelWater = barrelWater;
 
     // === DIFFICULTY SETTINGS ===
     const getDifficulty = (): 'easy' | 'normal' | 'hard' => {
@@ -825,17 +852,47 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         if (statsRef.current.fish > 0) {
           statsRef.current.fish -= 1;
           statsRef.current.hunger = Math.min(100, statsRef.current.hunger + 40);
+          bumpAch('totalFishEaten'); // RAFT-004
           playEatSound();
           onStatsUpdate({ ...statsRef.current });
         }
       };
       window.__drinkWaterFromGame = () => { if (barrelWater >= 30 && statsRef.current.thirst < 100) { barrelWater -= 30; statsRef.current.thirst = Math.min(100, statsRef.current.thirst + 40); window.__barrelWater = barrelWater; onStatsUpdate({ ...statsRef.current }); } };
       window.__cookFish = () => { console.log('[COOK] clicked, hasFire=' + window.__hasCampfireRef + ' fish=' + statsRef.current.fish); const hasFire = window.__hasCampfireRef; if (hasFire && statsRef.current.fish > 0 && cookingTimer <= 0) { statsRef.current.fish -= 1; cookedFish += 1; cookingTimer = 180; onStatsUpdate({ ...statsRef.current }); } };
-      window.__eatCookedFish = () => { console.log('[EAT COOKED] clicked, cookedFish=' + cookedFish); if (cookedFish > 0) { cookedFish -= 1; statsRef.current.hunger = Math.min(100, statsRef.current.hunger + 60); onStatsUpdate({ ...statsRef.current }); } };
+      window.__eatCookedFish = () => { console.log('[EAT COOKED] clicked, cookedFish=' + cookedFish); if (cookedFish > 0) { cookedFish -= 1; statsRef.current.hunger = Math.min(100, statsRef.current.hunger + 60); bumpAch('totalFishEaten'); onStatsUpdate({ ...statsRef.current }); } };
     }
 
+    // RAFT-006/007: live snapshot the page reads to save/autosave the run.
+    const writeSnapshot = () => {
+      if (!snapshotStore || typeof window === 'undefined') return;
+      snapshotStore.current = {
+        version: SAVE_VERSION,
+        savedAt: Date.now(),
+        time,
+        health: statsRef.current.health,
+        hunger: statsRef.current.hunger,
+        thirst: statsRef.current.thirst,
+        fish: statsRef.current.fish,
+        cookedFish,
+        day: statsRef.current.day,
+        wood: statsRef.current.wood,
+        plastic: statsRef.current.plastic,
+        raftHealth: statsRef.current.raftHealth,
+        raftWidth: raftRef.current.height,
+        hasRod: window.__hasRodRef ?? false,
+        hasSpear: window.__hasSpearRef ?? false,
+        hasHammer: window.__hasHammerRef ?? false,
+        hasRainBarrel: window.__hasRainBarrelRef ?? false,
+        hasCampfire: window.__hasCampfireRef ?? false,
+        walls: window.__wallsRef ?? 0,
+        roofs: window.__roofsRef ?? 0,
+        floors: window.__floorsRef ?? 0,
+        barrelWater,
+      };
+    };
+
     const update = () => {
-      if (gameOver) return;
+      if (gameOver || paused) return;
 // ===== CLOUDS =====
       if (isRaining && !window.__wasRaining) {
         window.__wasRaining = true;
@@ -883,6 +940,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       // ===== END CLOUDS =====
 
             time += 1;
+      writeSnapshot();
       // RAFT-002/003: achievement checks run every ~5s (300 frames) plus on key events.
       if (time - lastAchCheck >= 300) {
         checkAchievements(time, diff, (time - lastAchCheck) * MS_PER_FRAME);
@@ -892,7 +950,6 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       if (time - fpsLastCheck >= 30) { fpsValue = Math.round(fpsFrameCount * 60 / (time - fpsLastCheck)); fpsFrameCount = 0; fpsLastCheck = time; }
       if (startupRiseOffset > 0) startupRiseOffset -= 2.5;
       
-      const DAY_LENGTH = 60 * 60 * 2;
       const dayProgress = (time % DAY_LENGTH) / DAY_LENGTH;
       if (dayProgress < 0.35) { darkness = 0; } else if (dayProgress < 0.5) { const dt1 = (dayProgress - 0.35) / 0.15; darkness = dt1 * dt1 * dt1; } else if (dayProgress < 0.85) { darkness = 1; } else { const dt2 = (dayProgress - 0.85) / 0.15; darkness = 1 - dt2 * dt2 * dt2; }
       statsRef.current.day = Math.floor(time / DAY_LENGTH) + 1;
@@ -1196,8 +1253,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
           const frog = frogs[i];
           if (frog.x < player.x + player.width + 40 && frog.x + frog.width > player.x - 20 && frog.y < player.y + player.height && frog.y + frog.height > player.y) {
             frogs.splice(i, 1);
-            const s = loadAchStats();
-            if (s) { s.frogsKilled = (s.frogsKilled || 0) + 1; saveAchStats(s); }
+            bumpAch('frogsKilled'); // RAFT-004
           }
         }
         // KRAKEN SPEAR HIT (independent of shark)
@@ -1220,8 +1276,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
           shark.health--;
           if (shark.health <= 0) { 
             shark = null; 
-            const s = loadAchStats();
-            if (s) { s.sharksDefeated = (s.sharksDefeated || 0) + 1; saveAchStats(s); }
+            bumpAch('sharksDefeated'); // RAFT-004
           }
           else { shark.state = 'retreating'; shark.attackTimer = 180; }
         }
@@ -1671,11 +1726,9 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         if (raftHit || playerHit) {
           statsRef.current[item.type]++;
           if (item.type === 'wood') {
-            const s = loadAchStats();
-            if (s) { s.totalWood = (s.totalWood || 0) + 1; saveAchStats(s); }
+            bumpAch('totalWood'); // RAFT-004
           } else if (item.type === 'plastic') {
-            const s = loadAchStats();
-            if (s) { s.totalPlastic = (s.totalPlastic || 0) + 1; saveAchStats(s); }
+            bumpAch('totalPlastic'); // RAFT-004
           } items.splice(i, 1); continue;
         }
         if (item.y > 640) items.splice(i, 1);

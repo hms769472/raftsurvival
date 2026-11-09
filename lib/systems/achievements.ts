@@ -62,3 +62,14 @@ export function syncAchStats(
 export function findNewlyUnlocked(stats: AchievementStats, alreadyUnlocked: string[]): Achievement[] {
   return ACHIEVEMENTS.filter((a) => !alreadyUnlocked.includes(a.id) && a.condition(stats));
 }
+
+/** Immutably increments a numeric counter stat (no-op for non-numeric fields). */
+export function bumpAchStats(
+  stats: AchievementStats,
+  key: keyof AchievementStats,
+  delta = 1,
+): AchievementStats {
+  const value = stats[key];
+  if (typeof value !== 'number') return stats;
+  return { ...stats, [key]: value + delta };
+}
