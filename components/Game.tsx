@@ -1,7 +1,36 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { MS_PER_FRAME, DAY_LENGTH } from '@/lib/balance';
+import {
+  MS_PER_FRAME,
+  DAY_LENGTH,
+  SPEAR_REACH,
+  SHARK_REACH,
+  KRAKEN_REACH,
+  KRAKEN_MAX_HP,
+  KRAKEN_BOX,
+  KRAKEN_BITE_DAMAGE,
+  KRAKEN_BITE_INTERVAL,
+  KRAKEN_HEAL_ON_KILL,
+  KRAKEN_SPAWN_AFTER_FRAMES,
+  KRAKEN_SPAWN_CHANCE,
+  SHARK_MAX_HP,
+  SHARK_BITE_DAMAGE,
+  SHARK_SAFE_MIDDLE_DAMAGE,
+  SHARK_RAFT_DAMAGE,
+  SHARK_SPAWN_AFTER_FRAMES,
+  SHARK_SPAWN_CHANCE,
+  FROG_SPAWN_INTERVAL,
+  FROG_CONTACT_DAMAGE,
+  FROG_PROJECTILE_DAMAGE,
+  WALL_HP,
+  WALL_BLOCK_HEIGHT,
+  PLAYER_INVULN_FRAMES,
+  WEAPON_TIERS,
+  type WeaponTier,
+  type LootType,
+} from '@/lib/balance';
+import { applyHeal, applyDamage, inAttackArc, threatScale, isEnemyUnlocked, rollLoot } from '@/lib/systems/combat';
 import {
   DEFAULT_ACH_STATS,
   normalizeAchStats,
@@ -37,13 +66,15 @@ type GameProps = {
   snapshotStore?: SnapshotStore;
   /** Freezes simulation while a menu overlay is open. */
   paused?: boolean;
+  /** Current spear tier; drives spear damage (RAFT-106). */
+  spearTier?: WeaponTier;
 };
 
 type Frog = { x: number; y: number; width: number; height: number; shootTimer: number; direction: number; hopPhase: number; };
 type Projectile = { x: number; y: number; vx: number; vy: number; size: number; };
 type Raindrop = { x: number; y: number; length: number; speed: number; };
-type Item = { x: number; y: number; width: number; height: number; speed: number; type: 'wood' | 'plastic'; rotation: number; rotationSpeed: number; };
-type Shark = { x: number; y: number; vx: number; vy: number; width: number; height: number; speed: number; health: number; state: 'wandering' | 'attacking' | 'passing' | 'retreating'; attackTimer: number; tailPhase: number; willAttack: boolean; mouthOpen: number; };
+type Item = { x: number; y: number; width: number; height: number; speed: number; type: 'wood' | 'plastic' | 'fish'; rotation: number; rotationSpeed: number; };
+type Shark = { x: number; y: number; vx: number; vy: number; width: number; height: number; speed: number; health: number; maxHealth: number; hitFlash: number; state: 'wandering' | 'attacking' | 'passing' | 'retreating'; attackTimer: number; tailPhase: number; willAttack: boolean; mouthOpen: number; };
 type TreasureChest = {
   x: number;
   y: number;
@@ -93,12 +124,15 @@ type Fish = {
 };
 type WakeParticle = { x: number; y: number; size: number; speed: number; alpha: number; life: number; };
 type Kraken = { x: number; y: number; hp: number; maxHp: number; state: 'rising' | 'attacking' | 'dying'; timer: number; hitFlash: number; };
+type DamageNumber = { x: number; y: number; value: number; life: number; color: string; };
+/** RAFT-103: floating loot icon that flies toward the raft and is auto-collected. */
+type LootPickup = { x: number; y: number; type: LootType; amount: number; life: number; vy: number; };
 
 const RAFT_WIDTH = 80;
 const RAFT_CENTER_Y = 300;
 const WORLD_SCROLL_SPEED = 2.2;
 
-export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raftWidth, hasRod, hasSpear, hasHammer, hasCampfire, hasRainBarrel, walls, roofs, floors, gameOver, onGameOver, playerState, initialState, snapshotStore, paused }: GameProps) {
+export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raftWidth, hasRod, hasSpear, hasHammer, hasCampfire, hasRainBarrel, walls, roofs, floors, gameOver, onGameOver, playerState, initialState, snapshotStore, paused, spearTier }: GameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const waveSoundRef = useRef<{ noiseSource: AudioBufferSourceNode; lfo: OscillatorNode; } | null>(null);
@@ -118,6 +152,11 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
 
   const playerStateRef = useRef(playerState);
   useEffect(() => { playerStateRef.current = playerState; }, [playerState]);
+
+  // RAFT-106: spear tier prop can change mid-run (upgrade); the game loop reads
+  // it through a ref so the effect never needs to restart.
+  const spearTierRef = useRef<WeaponTier>(spearTier ?? 'wooden');
+  useEffect(() => { spearTierRef.current = spearTier ?? 'wooden'; }, [spearTier]);
 
   useEffect(() => {
     raftRef.current.height = raftWidth;
@@ -260,6 +299,37 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
         noiseGain.connect(ctx.destination);
         noise.start(now);
       } catch (e) {}
+    };
+
+    // RAFT-108: distinct impact SFX played only when an attack connects.
+    const playHitSound = () => {
+      if (!isSfxEnabled()) return;
+      try {
+        const ctx = getAudioCtx();
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(320, now);
+        osc.frequency.exponentialRampToValueAtTime(90, now + 0.09);
+        gain.gain.setValueAtTime(0.18, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.14);
+        const noise = ctx.createBufferSource();
+        const buffer = ctx.createBuffer(1, ctx.sampleRate * 0.06, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+        noise.buffer = buffer;
+        const noiseGain = ctx.createGain();
+        noiseGain.gain.setValueAtTime(0.12, now);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+        noise.connect(noiseGain);
+        noiseGain.connect(ctx.destination);
+        noise.start(now);
+      } catch {}
     };
 
     const playCraftSound = () => {
@@ -446,12 +516,20 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
       if (statsRef.current.wood >= 4) { statsRef.current.wood -= 4; }
     } else if (craftAction.type === 'RAIN_BARREL') {
       bumpAch('builtBarrel'); // RAFT-004
+    } else if (craftAction.type === 'SPEAR_UPGRADE') {
+      // RAFT-106: cost is that of the tier being upgraded *to* (the prop has
+      // already advanced by the time this effect runs).
+      const cost = WEAPON_TIERS[spearTier ?? 'wooden'];
+      if (statsRef.current.wood >= cost.wood && statsRef.current.plastic >= cost.plastic) {
+        statsRef.current.wood -= cost.wood;
+        statsRef.current.plastic -= cost.plastic;
+      }
     }
     // Immediately update the HUD with new resource counts
     playCraftSound(); // __craftSoundPlayed
     onStatsUpdate({ ...statsRef.current });
     onCraftComplete();
-  }, [craftAction, onCraftComplete]);
+  }, [craftAction, onCraftComplete, spearTier]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -470,6 +548,11 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     
     const frogs: Frog[] = [];
     const projectiles: Projectile[] = [];
+    const damageNumbers: DamageNumber[] = [];
+    const lootDrops: LootPickup[] = [];
+    // RAFT-110: minimal per-wall durability (0 = destroyed). Phase 2 replaces
+    // this with real structure entities (RAFT-204).
+    const wallHp: number[] = [];
     const raindrops: Raindrop[] = [];
     const items: Item[] = [];
     let shark: Shark | null = null;
@@ -507,6 +590,7 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
       if (e.key.toLowerCase() === 'f') keys.F = true;
       if (e.key === ' ') keys.Space = true;
       if (e.key.toLowerCase() === 'h') keys.H = true;
+      if (e.key === 'F3') { e.preventDefault(); window.__debugHitboxes = !window.__debugHitboxes; } // RAFT-102 debug overlay
     };
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft') keys.ArrowLeft = false;
@@ -836,12 +920,13 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       const willAttack = Math.random() < 0.5;
       const edge = Math.floor(Math.random() * 4);
       const spd = 2;
+      const hp = Math.round(SHARK_MAX_HP * threatScale(statsRef.current.day).hpMult);
       let sx = 0, sy = 0, svx = 0, svy = 0;
       if (edge === 0) { sx = -180; sy = 150 + Math.random() * 300; svx = spd; svy = 0; }
       else if (edge === 1) { sx = 980; sy = 150 + Math.random() * 300; svx = -spd; svy = 0; }
       else if (edge === 2) { sx = 100 + Math.random() * 600; sy = -180; svx = 0; svy = spd; }
       else { sx = 100 + Math.random() * 600; sy = 780; svx = 0; svy = -spd; }
-      shark = { x: sx, y: sy, vx: svx, vy: svy, width: 160, height: 70, speed: spd, health: 3, state: 'wandering', attackTimer: 0, tailPhase: 0, willAttack, mouthOpen: 0 };
+      shark = { x: sx, y: sy, vx: svx, vy: svy, width: 160, height: 70, speed: spd, health: hp, maxHealth: hp, hitFlash: 0, state: 'wandering', attackTimer: 0, tailPhase: 0, willAttack, mouthOpen: 0 };
     };
 
         const getRaftScreenY = () => RAFT_CENTER_Y + raftBobY + Math.max(0, startupRiseOffset);
@@ -888,8 +973,43 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         roofs: window.__roofsRef ?? 0,
         floors: window.__floorsRef ?? 0,
         barrelWater,
+        spearTier: spearTierRef.current,
       };
     };
+
+    // RAFT-103: XP sink. Currently only logs in debug mode; Phase 3 wires the
+    // real progression system through window.__onXpFromGame.
+    const onXp = (amount: number) => {
+      if (typeof window === 'undefined') return;
+      if (window.__onXpFromGame) { window.__onXpFromGame(amount); return; }
+      if (window.__debugHitboxes) console.log('[XP] +' + amount);
+    };
+
+    const spawnDamageNumber = (x: number, y: number, value: number, color = '#FFD166') => {
+      damageNumbers.push({ x, y, value, life: 45, color });
+    };
+
+    // RAFT-103: rolls the enemy loot table, floats the drops toward the raft and
+    // auto-collects them into the stats. Also fires the XP hook.
+    const grantKillRewards = (enemy: 'frog' | 'shark' | 'kraken', x: number, y: number) => {
+      for (const drop of rollLoot(enemy)) {
+        if (drop.type === 'wood') statsRef.current.wood += drop.amount;
+        else if (drop.type === 'plastic') statsRef.current.plastic += drop.amount;
+        else statsRef.current.fish += drop.amount;
+        lootDrops.push({ x, y, type: drop.type, amount: drop.amount, life: 60, vy: -0.9 - Math.random() * 0.4 });
+      }
+      onXp(enemy === 'frog' ? 5 : enemy === 'shark' ? 20 : 100);
+      onStatsUpdate({ ...statsRef.current });
+    };
+
+    // RAFT-110: keep one durability entry per built wall; intruders strike the
+    // first intact wall before the raft itself takes damage.
+    const syncWalls = () => {
+      const target = (typeof window !== 'undefined' ? window.__wallsRef : 0) || 0;
+      while (wallHp.length < target) wallHp.push(WALL_HP);
+      if (wallHp.length > target) wallHp.length = target;
+    };
+    const intactWalls = () => wallHp.filter((hp) => hp > 0).length;
 
     const update = () => {
       if (gameOver || paused) return;
@@ -963,21 +1083,20 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       const raftScreenX = raftRef.current.x + raftBobX;
       const raftDeltaX = raftScreenX - lastRaftX;
 
-      statsRef.current.hunger -= 0.005;
+      // RAFT-111: difficulty drives the hunger/thirst drain rates.
+      statsRef.current.hunger -= 0.005 * DIFF.hungerRate;
       if (statsRef.current.hunger < 0) statsRef.current.hunger = 0;
-      statsRef.current.thirst -= 0.004;
+      statsRef.current.thirst -= 0.004 * DIFF.thirstRate;
       if (statsRef.current.thirst < 0) statsRef.current.thirst = 0;
       if (statsRef.current.thirst === 0) {
-        statsRef.current.health -= 0.003 * DIFF.damageMult;
-        if (statsRef.current.health < 0) statsRef.current.health = 0;
+        statsRef.current.health = applyDamage(statsRef.current.health, 0.003 * DIFF.damageMult);
       }
       if (isRaining && window.__hasRainBarrelRef && barrelWater < 100) {
         barrelWater = Math.min(100, barrelWater + 0.05);
         window.__barrelWater = barrelWater;
       }
       if (statsRef.current.hunger === 0) {
-        statsRef.current.health -= 0.003 * DIFF.damageMult;
-        if (statsRef.current.health < 0) statsRef.current.health = 0;
+        statsRef.current.health = applyDamage(statsRef.current.health, 0.003 * DIFF.damageMult);
       }
 
       if (statsRef.current.health < prevHealth - 0.05 && damageCooldown <= 0) {
@@ -992,11 +1111,18 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
 
       if (statsRef.current.health <= 0) { onGameOver(); return; }
 
+      // ===== THREAT SCALING (RAFT-104) =====
+      // Day-based multipliers feed every spawn / HP / damage decision below.
+      const day = statsRef.current.day;
+      const scale = threatScale(day);
+      const enemyDamageMult = DIFF.damageMult * scale.damageMult;
+      syncWalls(); // RAFT-110: track built walls' durability
+
       // KRAKEN UPDATE
       krakenTimer++;
-      if (!kraken && krakenTimer > 6000 && Math.random() < 0.003) {
+      if (!kraken && isEnemyUnlocked('kraken', day) && krakenTimer > KRAKEN_SPAWN_AFTER_FRAMES && Math.random() < KRAKEN_SPAWN_CHANCE * scale.spawnMult) {
         krakenTimer = 0;
-        kraken = { x: raftRef.current.x + raftRef.current.width / 2, y: raftScreenY + 300, hp: 5, maxHp: 5, state: 'rising', timer: 0, hitFlash: 0 };
+        kraken = { x: raftRef.current.x + raftRef.current.width / 2, y: raftScreenY + 300, hp: Math.round(KRAKEN_MAX_HP * scale.hpMult), maxHp: Math.round(KRAKEN_MAX_HP * scale.hpMult), state: 'rising', timer: 0, hitFlash: 0 };
       }
       if (kraken) {
         kraken.timer++;
@@ -1005,9 +1131,8 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
           kraken.y -= 1.2;
           if (kraken.timer > 60) { kraken.state = 'attacking'; kraken.timer = 0; }
         } else if (kraken.state === 'attacking') {
-          if (kraken.timer % 180 === 0) {
-            statsRef.current.health -= 0.5;
-            if (statsRef.current.health < 0) statsRef.current.health = 0;
+          if (kraken.timer % KRAKEN_BITE_INTERVAL === 0) {
+            statsRef.current.health = applyDamage(statsRef.current.health, KRAKEN_BITE_DAMAGE * enemyDamageMult);
           }
           if (kraken.timer > 600) { kraken.state = 'dying'; kraken.timer = 0; }
         } else if (kraken.state === 'dying') {
@@ -1246,45 +1371,68 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       if (attackTimer > 0) attackTimer--;
       if (eatCooldown > 0) eatCooldown--;
       if (cookingTimer > 0) cookingTimer--;
+      const weapon = WEAPON_TIERS[spearTierRef.current];
       if ((typeof window !== 'undefined' ? window.__hasSpearRef : false) && keys.Space && attackTimer === 0) {
-        attackTimer = 30;
+        attackTimer = weapon.cooldown; // RAFT-106: tier-driven cooldown
         playChopSound();
+        let hitLanded = false;
+
+        // RAFT-102: one shared 2D attack arc for every melee target. Enemies
+        // outside the arc (including off-screen ones) are never hit.
         for (let i = frogs.length - 1; i >= 0; i--) {
           const frog = frogs[i];
-          if (frog.x < player.x + player.width + 40 && frog.x + frog.width > player.x - 20 && frog.y < player.y + player.height && frog.y + frog.height > player.y) {
+          if (inAttackArc(player, frog, SPEAR_REACH)) {
+            spawnDamageNumber(frog.x + frog.width / 2, frog.y, weapon.damage);
             frogs.splice(i, 1);
             bumpAch('frogsKilled'); // RAFT-004
+            grantKillRewards('frog', frog.x + frog.width / 2, frog.y + frog.height / 2);
+            hitLanded = true;
           }
         }
-        // KRAKEN SPEAR HIT (independent of shark)
-        if (kraken && kraken.state !== 'dying' && Math.abs(kraken.x - (player.x + player.width / 2)) < 120) {
-          kraken.hp--;
-          kraken.hitFlash = 20;
-          if (kraken.hp <= 0) {
-            statsRef.current.wood += 40;
-            statsRef.current.plastic += 25;
-            statsRef.current.fish += 5;
-            statsRef.current.health = 100;
-            statsRef.current.hunger = 100;
-            window.__chestMessage = { text: 'KRAKEN DEFEATED!', time: 180 };
-            onStatsUpdate({ ...statsRef.current });
-            kraken.state = 'dying';
-            kraken.timer = 0;
+
+        // KRAKEN (RAFT-101: heal is clamped; no more flat health = 100 exploit)
+        if (kraken && kraken.state !== 'dying') {
+          const kBox = { x: kraken.x - KRAKEN_BOX / 2, y: kraken.y - KRAKEN_BOX / 2, width: KRAKEN_BOX, height: KRAKEN_BOX };
+          if (inAttackArc(player, kBox, KRAKEN_REACH)) {
+            kraken.hp -= weapon.damage;
+            kraken.hitFlash = 20;
+            spawnDamageNumber(kraken.x, kraken.y - 60, weapon.damage, '#FF8FD6');
+            hitLanded = true;
+            if (kraken.hp <= 0) {
+              statsRef.current.health = applyHeal(statsRef.current.health, KRAKEN_HEAL_ON_KILL);
+              statsRef.current.hunger = Math.min(100, statsRef.current.hunger + 40);
+              window.__chestMessage = { text: 'KRAKEN DEFEATED!', time: 180 };
+              grantKillRewards('kraken', kraken.x, kraken.y);
+              kraken.state = 'dying';
+              kraken.timer = 0;
+            }
           }
         }
-        if (shark && shark.x < player.x + 120 && shark.x + shark.width > player.x - 40) {
-          shark.health--;
-          if (shark.health <= 0) { 
-            shark = null; 
+
+        // SHARK
+        if (shark && inAttackArc(player, shark, SHARK_REACH)) {
+          shark.health -= weapon.damage;
+          shark.hitFlash = 12;
+          spawnDamageNumber(shark.x + shark.width / 2, shark.y, weapon.damage);
+          hitLanded = true;
+          if (shark.health <= 0) {
+            grantKillRewards('shark', shark.x + shark.width / 2, shark.y + shark.height / 2);
             bumpAch('sharksDefeated'); // RAFT-004
+            shark = null;
+          } else {
+            shark.state = 'retreating';
+            shark.attackTimer = 180;
           }
-          else { shark.state = 'retreating'; shark.attackTimer = 180; }
         }
+
+        if (hitLanded) playHitSound(); // RAFT-108
       }
 
-      if (!shark && time > 1200 && Math.random() < 0.005 / DIFF.enemySpawnMult) { spawnShark(); }
+      // RAFT-104: sharks only appear from Day 4 and spawn faster as days pass.
+      if (!shark && isEnemyUnlocked('shark', day) && time > SHARK_SPAWN_AFTER_FRAMES && Math.random() < SHARK_SPAWN_CHANCE * scale.spawnMult / DIFF.enemySpawnMult) { spawnShark(); }
       if (shark) {
         shark.tailPhase += 0.2;
+        if (shark.hitFlash > 0) shark.hitFlash--;
         if (shark.mouthOpen > 0) shark.mouthOpen--;
 
         // === SHARK EATS ANY FISH IT TOUCHES ===
@@ -1353,44 +1501,33 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
           shark.y += shark.vy;
           shark.attackTimer--;
           if (shark.attackTimer <= 0) {
-            // === SHARK BITE LOGIC (robust) ===
-            // Shark lunges at raft. Player is safe in middle, in danger at edges or in water.
+            // === SHARK BITE (RAFT-105: the middle is no longer 100% safe) ===
             const playerCX = player.x + player.width / 2;
-            const playerCY = player.y + player.height / 2;
             const sharkCX2 = shark.x + shark.width / 2;
             const sharkCY2 = shark.y + shark.height / 2;
             const distX = Math.abs(sharkCX2 - playerCX);
-            const distY = Math.abs(sharkCY2 - playerCY);
+            const distY = Math.abs(sharkCY2 - (player.y + player.height / 2));
             const euclidDist = Math.sqrt(distX * distX + distY * distY);
-            const inSharkRange = euclidDist < 250;
-            
-            console.log('[SHARK BITE] dist=' + euclidDist.toFixed(0) + ' inRange=' + inSharkRange + ' isInWater=' + isInWater + ' playerCX=' + playerCX.toFixed(0));
-            
-            if (inSharkRange) {
+            shark.mouthOpen = 40;
+            if (euclidDist < 250) {
+              for (let sp = 0; sp < 6; sp++) wakeParticles.push({ x: sharkCX2, y: sharkCY2, size: 2 + Math.random() * 3, speed: -0.5 - Math.random(), alpha: 0.9, life: 30 });
               const safeLeft = raftRef.current.x + raftRef.current.width * 0.30;
               const safeRight = raftRef.current.x + raftRef.current.width * 0.70;
               const inSafeMiddle = playerCX >= safeLeft && playerCX <= safeRight;
-              
-              console.log('[SHARK BITE] safeLeft=' + safeLeft.toFixed(0) + ' safeRight=' + safeRight.toFixed(0) + ' inSafe=' + inSafeMiddle);
-              
-              if (isInWater) {
-                statsRef.current.health -= 0.7 * DIFF.damageMult;
-                if (statsRef.current.health < 0) statsRef.current.health = 0;
-                shark.mouthOpen = 40;
-                console.log('[SHARK BITE] Player in water - BIT!');
-              } else if (!inSafeMiddle) {
-                statsRef.current.health -= 0.7 * DIFF.damageMult;
-                if (statsRef.current.health < 0) statsRef.current.health = 0;
-                shark.mouthOpen = 40;
-                console.log('[SHARK BITE] Player at EDGE - BIT!');
+              if (intactWalls() > 0) {
+                // RAFT-110: an intact wall absorbs the bite instead of the player.
+                const wi = wallHp.findIndex((hp) => hp > 0);
+                if (wi >= 0) wallHp[wi] -= SHARK_RAFT_DAMAGE;
+              } else if (isInWater || !inSafeMiddle) {
+                statsRef.current.health = applyDamage(statsRef.current.health, SHARK_BITE_DAMAGE * enemyDamageMult);
+                spawnDamageNumber(playerCX, player.y, Math.round(SHARK_BITE_DAMAGE * enemyDamageMult * 10) / 10, '#FF6B6B');
               } else {
-                statsRef.current.raftHealth -= 15;
+                // Middle still takes chip damage and the raft is chewed.
+                statsRef.current.health = applyDamage(statsRef.current.health, SHARK_SAFE_MIDDLE_DAMAGE * enemyDamageMult);
+                statsRef.current.raftHealth -= SHARK_RAFT_DAMAGE;
                 if (statsRef.current.raftHealth < 0) statsRef.current.raftHealth = 0;
-                shark.mouthOpen = 40;
-                console.log('[SHARK BITE] Player in SAFE middle - raft damaged');
+                spawnDamageNumber(playerCX, player.y, Math.round(SHARK_SAFE_MIDDLE_DAMAGE * enemyDamageMult * 10) / 10, '#FFA36B');
               }
-            } else {
-              console.log('[SHARK BITE] Player out of range - nothing');
             }
             shark.state = 'retreating';
             shark.attackTimer = Math.floor(480 * DIFF.sharkRetreatMult);
@@ -1672,7 +1809,9 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         }
       }
 
-      if (time % Math.floor(480 * DIFF.enemySpawnMult) === 0 && frogs.length < 3) spawnFrog();
+      // RAFT-104: frog pressure grows with the day (cap + spawn rate).
+      const frogInterval = Math.max(60, Math.floor(FROG_SPAWN_INTERVAL * DIFF.enemySpawnMult / scale.spawnMult));
+      if (time % frogInterval === 0 && frogs.length < scale.frogCap) spawnFrog();
       for (let i = frogs.length - 1; i >= 0; i--) {
         const frog = frogs[i];
         frog.hopPhase += 0.15;
@@ -1681,13 +1820,12 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         frog.shootTimer--;
         if (frog.shootTimer <= 0) { spawnProjectile(frog); frog.shootTimer = 120 + Math.random() * 120; }
         
-        // Frog body damage on player contact
+        // RAFT-111: frog contact damage scales with difficulty + day.
         if (frog.x < player.x + player.width && frog.x + frog.width > player.x &&
             frog.y < player.y + player.height && frog.y + frog.height > player.y) {
           if (invulnerabilityTimer <= 0) {
-            statsRef.current.health -= 0.5;
-            invulnerabilityTimer = 90;
-            if (statsRef.current.health < 0) statsRef.current.health = 0;
+            statsRef.current.health = applyDamage(statsRef.current.health, FROG_CONTACT_DAMAGE * enemyDamageMult);
+            invulnerabilityTimer = PLAYER_INVULN_FRAMES;
           }
         }
         
@@ -1695,13 +1833,30 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       }
       for (let i = projectiles.length - 1; i >= 0; i--) {
         const proj = projectiles[i]; proj.x += proj.vx; proj.y += proj.vy - WORLD_SCROLL_SPEED * 0.5;
+        // RAFT-110: intact walls intercept shots crossing the wall band.
+        if (intactWalls() > 0 && proj.y > raftScreenY - WALL_BLOCK_HEIGHT && proj.y < raftScreenY + 30) {
+          for (let sp = 0; sp < 4; sp++) wakeParticles.push({ x: proj.x, y: proj.y, size: 1.5 + Math.random() * 2, speed: -0.5, alpha: 0.9, life: 20 });
+          projectiles.splice(i, 1); continue;
+        }
         if (proj.x < player.x + player.width && proj.x + proj.size > player.x && proj.y < player.y + player.height && proj.y + proj.size > player.y) {
-          if (invulnerabilityTimer <= 0) { statsRef.current.health -= 1; invulnerabilityTimer = 120; if (statsRef.current.health < 0) statsRef.current.health = 0; }
+          if (invulnerabilityTimer <= 0) { statsRef.current.health = applyDamage(statsRef.current.health, FROG_PROJECTILE_DAMAGE * enemyDamageMult); invulnerabilityTimer = PLAYER_INVULN_FRAMES * 2; }
           projectiles.splice(i, 1); continue;
         }
         if (proj.x < -50 || proj.x > 850 || proj.y < -50 || proj.y > 650) projectiles.splice(i, 1);
       }
       if (invulnerabilityTimer > 0) invulnerabilityTimer--;
+
+      // RAFT-103/108: animate floating loot + damage numbers.
+      for (let i = lootDrops.length - 1; i >= 0; i--) {
+        const d = lootDrops[i];
+        d.y += d.vy; d.vy *= 0.97; d.life--;
+        if (d.life <= 0) lootDrops.splice(i, 1);
+      }
+      for (let i = damageNumbers.length - 1; i >= 0; i--) {
+        const dn = damageNumbers[i];
+        dn.y -= 0.8; dn.life--;
+        if (dn.life <= 0) damageNumbers.splice(i, 1);
+      }
 
       spawnTimer++;
       if (spawnTimer > 120) { spawnItem(); spawnTimer = 0; }
@@ -2847,6 +3002,15 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       ctx.textAlign = 'start';
     };
 
+    // RAFT-108: compact health bar shown above enemies while damaged.
+    const drawEnemyHealthBar = (x: number, y: number, width: number, hp: number, maxHp: number, color: string) => {
+      const w = Math.max(24, width * 0.6);
+      const bx = x + (width - w) / 2;
+      ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(bx - 1, y - 1, w + 2, 6);
+      ctx.fillStyle = '#333'; ctx.fillRect(bx, y, w, 4);
+      ctx.fillStyle = color; ctx.fillRect(bx, y, w * Math.max(0, Math.min(1, hp / maxHp)), 4);
+    };
+
     const draw = () => {
       ctx.clearRect(0, 0, 800, 600);
 
@@ -3388,6 +3552,49 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         }
         ctx.fillStyle = `rgba(220, 0, 0, ${intensity})`;
         ctx.beginPath(); ctx.arc(cx, cy, 25 + (30 - damageFlash), 0, Math.PI * 2); ctx.fill();
+      }
+
+      // RAFT-108: floating damage numbers.
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 14px "Press Start 2P", monospace';
+      for (const dn of damageNumbers) {
+        ctx.globalAlpha = Math.min(1, dn.life / 30);
+        const shown = String(Math.round(dn.value * 10) / 10);
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 4; ctx.strokeText(shown, dn.x, dn.y);
+        ctx.fillStyle = dn.color; ctx.fillText(shown, dn.x, dn.y);
+      }
+      ctx.globalAlpha = 1;
+
+      // RAFT-103: floating loot icons (already auto-collected into stats).
+      for (const d of lootDrops) {
+        ctx.globalAlpha = Math.min(1, d.life / 30);
+        ctx.font = '16px serif';
+        ctx.fillText(d.type === 'wood' ? '🪵' : d.type === 'plastic' ? '🧴' : '🐟', d.x, d.y);
+        ctx.font = 'bold 10px "Press Start 2P", monospace';
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 3; ctx.strokeText('+' + d.amount, d.x, d.y - 14);
+        ctx.fillStyle = '#FFF'; ctx.fillText('+' + d.amount, d.x, d.y - 14);
+      }
+      ctx.globalAlpha = 1;
+      ctx.textAlign = 'start';
+
+      // RAFT-108: shark health bar (kraken draws its own).
+      if (shark && shark.health < shark.maxHealth) {
+        drawEnemyHealthBar(shark.x, shark.y - 12, shark.width, shark.health, shark.maxHealth, '#E74C3C');
+      }
+
+      // RAFT-102: F3 debug overlay — attack arc + enemy hitboxes.
+      if (typeof window !== 'undefined' && window.__debugHitboxes) {
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(0, 255, 0, 0.9)';
+        ctx.strokeRect(player.x, player.y, player.width, player.height);
+        ctx.strokeStyle = 'rgba(255, 0, 0, 0.9)';
+        ctx.strokeRect(player.x - SPEAR_REACH.back, player.y - SPEAR_REACH.vertical, player.width + SPEAR_REACH.front + SPEAR_REACH.back, player.height + SPEAR_REACH.vertical * 2);
+        for (const frog of frogs) { ctx.strokeStyle = '#00FFFF'; ctx.strokeRect(frog.x, frog.y, frog.width, frog.height); }
+        if (shark) { ctx.strokeStyle = '#FF00FF'; ctx.strokeRect(shark.x, shark.y, shark.width, shark.height); }
+        if (kraken) { ctx.strokeStyle = '#FFAA00'; ctx.strokeRect(kraken.x - KRAKEN_BOX / 2, kraken.y - KRAKEN_BOX / 2, KRAKEN_BOX, KRAKEN_BOX); }
+        for (const proj of projectiles) { ctx.strokeStyle = 'rgba(255,255,0,0.9)'; ctx.strokeRect(proj.x, proj.y, proj.size, proj.size); }
+        const wallCount = intactWalls();
+        if (wallCount > 0) { ctx.strokeStyle = 'rgba(0,128,255,0.9)'; ctx.strokeRect(raftDrawX, raftDrawY - WALL_BLOCK_HEIGHT, raftRef.current.width, WALL_BLOCK_HEIGHT); }
       }
     };
 

@@ -14,6 +14,7 @@ import CraftingMenu from '@/components/CraftingMenu';
 import GameOver from '@/components/GameOver';
 import BackgroundMusic from '@/components/BackgroundMusic';
 import { loadSnapshot, saveSnapshot, hasSnapshot, type GameSnapshot, type SnapshotStore } from '@/lib/save';
+import { nextWeaponTier, type WeaponTier } from '@/lib/balance';
 
 export default function Home() {
   const [scene, setScene] = useState<'menu' | 'playing' | 'settings' | 'credits' | 'coop' | 'achievements'>('menu');
@@ -43,6 +44,7 @@ export default function Home() {
   const [playerState, setPlayerState] = useState<'standing' | 'sitting' | 'laying'>('standing');
   const [gameScale, setGameScale] = useState(1);
   const [barrelWater, setBarrelWater] = useState(0);
+  const [spearTier, setSpearTier] = useState<WeaponTier>('wooden');
   // Snapshot the Game writes every frame; the page persists it on save/autosave.
   const snapshotStore: SnapshotStore = useRef<GameSnapshot | null>(null);
   const [initialState, setInitialState] = useState<GameSnapshot | null>(null);
@@ -142,6 +144,7 @@ export default function Home() {
     if (type === 'HAMMER') setHasHammer(true);
     if (type === 'RAIN_BARREL') setHasRainBarrel(true);
     if (type === 'CAMPFIRE') setHasCampfire(true);
+    if (type === 'SPEAR_UPGRADE') setSpearTier(prev => nextWeaponTier(prev) ?? prev);
     if (type === 'WALL') setWalls(prev => Math.min(prev + 1, 4));
     if (type === 'ROOF') setRoofs(prev => Math.min(prev + 1, 1));
     if (type === 'FLOOR') setFloors(prev => Math.min(prev + 1, 2));
@@ -206,6 +209,7 @@ export default function Home() {
     setRaftWidth(150);
     setHasRod(false);
     setHasSpear(false);
+    setSpearTier('wooden');
     setHasHammer(false);
     setHasRainBarrel(false);
     setHasCampfire(false);
@@ -251,6 +255,7 @@ export default function Home() {
     setRaftWidth(data.raftWidth);
     setHasRod(data.hasRod);
     setHasSpear(data.hasSpear);
+    setSpearTier(data.spearTier);
     setHasHammer(data.hasHammer);
     setHasRainBarrel(data.hasRainBarrel);
     setHasCampfire(data.hasCampfire);
@@ -367,6 +372,7 @@ export default function Home() {
               walls={walls}
               roofs={roofs}
               floors={floors}
+              spearTier={spearTier}
             />
           )}
           {gameOver && <GameOver onRespawn={handleRespawn} onSaveAndQuit={handleSaveAndQuit} />}

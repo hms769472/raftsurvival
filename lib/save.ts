@@ -6,7 +6,9 @@
 // normalised field-by-field instead of throwing, so a bad save can never
 // crash the game on boot.
 
-export const SAVE_VERSION = 2;
+import type { WeaponTier } from '@/lib/balance';
+
+export const SAVE_VERSION = 3;
 export const SAVE_KEY = 'raftSave';
 
 export type GameSnapshot = {
@@ -33,6 +35,8 @@ export type GameSnapshot = {
   roofs: number;
   floors: number;
   barrelWater: number;
+  /** Current spear tier (RAFT-106). */
+  spearTier: WeaponTier;
 };
 
 /** Mutable box shared between <Game> and the page so a save can read live state. */
@@ -61,12 +65,15 @@ export const DEFAULT_SNAPSHOT: GameSnapshot = {
   roofs: 0,
   floors: 0,
   barrelWater: 0,
+  spearTier: 'wooden',
 };
 
 const asNumber = (v: unknown, fallback: number): number =>
   typeof v === 'number' && Number.isFinite(v) ? v : fallback;
 const asBool = (v: unknown, fallback: boolean): boolean =>
   typeof v === 'boolean' ? v : fallback;
+const asTier = (v: unknown, fallback: WeaponTier): WeaponTier =>
+  v === 'wooden' || v === 'stone' || v === 'reinforced' ? v : fallback;
 
 /** Coerces any persisted blob (old flat save, corrupt value, null) to a full snapshot. */
 export function normalizeSnapshot(raw: unknown): GameSnapshot {
@@ -95,6 +102,7 @@ export function normalizeSnapshot(raw: unknown): GameSnapshot {
     roofs: asNumber(r.roofs, DEFAULT_SNAPSHOT.roofs),
     floors: asNumber(r.floors, DEFAULT_SNAPSHOT.floors),
     barrelWater: asNumber(r.barrelWater, DEFAULT_SNAPSHOT.barrelWater),
+    spearTier: asTier(r.spearTier, DEFAULT_SNAPSHOT.spearTier),
   };
 }
 

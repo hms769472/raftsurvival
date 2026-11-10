@@ -26,12 +26,16 @@ declare global {
     __barrelWater?: number;
     __wasRaining?: boolean;
     __chestMessage?: ChestMessage | null;
+    /** Debug overlay: draws attack arcs / enemy hitboxes when true (RAFT-102). */
+    __debugHitboxes?: boolean;
 
     // Action hooks exposed by <Game> for the React HUD buttons.
     __eatFishFromGame?: () => void;
     __drinkWaterFromGame?: () => void;
     __cookFish?: () => void;
     __eatCookedFish?: () => void;
+    /** XP sink for kills/loot (wired to the progression system in Phase 3). */
+    __onXpFromGame?: (amount: number) => void;
 
     // Vendor-prefixed audio constructor still required on older Safari.
     webkitAudioContext?: typeof AudioContext;

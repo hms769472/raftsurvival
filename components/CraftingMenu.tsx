@@ -1,5 +1,6 @@
-﻿'use client';
+'use client';
 import React from 'react';
+import { WEAPON_TIERS, nextWeaponTier, type WeaponTier } from '@/lib/balance';
 
 type CraftingMenuProps = {
   onClose: () => void;
@@ -8,10 +9,14 @@ type CraftingMenuProps = {
   hasRod: boolean; hasSpear: boolean; hasHammer: boolean;
   hasRainBarrel: boolean; hasCampfire: boolean;
   walls: number; roofs: number; floors: number;
+  spearTier: WeaponTier;
 };
 
-export default function CraftingMenu({ onClose, onCraft, wood, plastic, hasRod, hasSpear, hasHammer, hasRainBarrel, hasCampfire, walls, roofs, floors }: CraftingMenuProps) {
+export default function CraftingMenu({ onClose, onCraft, wood, plastic, hasRod, hasSpear, hasHammer, hasRainBarrel, hasCampfire, walls, roofs, floors, spearTier }: CraftingMenuProps) {
   const btn = (enabled: boolean, color: string) => 'p-2 border-2 text-[10px] flex flex-col items-center gap-1 transition-colors rounded ' + (enabled ? color : 'bg-gray-400 border-gray-500 text-gray-200 cursor-not-allowed');
+  const nextTier = nextWeaponTier(spearTier);
+  const nextTierCost = nextTier ? WEAPON_TIERS[nextTier] : null;
+  const canUpgrade = hasSpear && nextTierCost !== null && wood >= nextTierCost.wood && plastic >= nextTierCost.plastic;
   return (
     <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-50 pointer-events-auto">
       <div className="bg-[#E6A15E] border-4 border-[#8B4513] p-4 rounded-lg w-[26rem] shadow-2xl max-h-[95%] overflow-y-auto">
@@ -27,7 +32,11 @@ export default function CraftingMenu({ onClose, onCraft, wood, plastic, hasRod, 
             <span>{hasRod ? '✓ FISHING ROD' : 'FISHING ROD'}</span><span className="text-[9px]">5 Wood</span>
           </button>
           <button onClick={() => onCraft('SPEAR')} disabled={wood < 8 || hasSpear} className={btn(wood >= 8 && !hasSpear, 'bg-[#E74C3C] border-[#C0392B] text-white')} style={{ fontFamily: '"Press Start 2P", monospace' }}>
-            <span>{hasSpear ? '✓ WOODEN SPEAR' : 'WOODEN SPEAR'}</span><span className="text-[9px]">8 Wood</span>
+            <span>{hasSpear ? `✓ ${WEAPON_TIERS[spearTier].name.toUpperCase()}` : 'WOODEN SPEAR'}</span><span className="text-[9px]">8 Wood · DMG {WEAPON_TIERS[spearTier].damage}</span>
+          </button>
+          <button onClick={() => onCraft('SPEAR_UPGRADE')} disabled={!canUpgrade} className={btn(!!canUpgrade, 'bg-[#C0392B] border-[#7B241C] text-white')} style={{ fontFamily: '"Press Start 2P", monospace' }}>
+            <span>{nextTier ? `UPGRADE → ${nextTierCost!.name.toUpperCase()}` : '✓ MAX SPEAR TIER'}</span>
+            <span className="text-[9px]">{nextTierCost ? `${nextTierCost.wood} Wood, ${nextTierCost.plastic} Plastic · DMG ${nextTierCost.damage}` : 'Fully upgraded'}</span>
           </button>
           <button onClick={() => onCraft('HAMMER')} disabled={wood < 8 || hasHammer} className={btn(wood >= 8 && !hasHammer, 'bg-[#8E44AD] border-[#6C3483] text-white')} style={{ fontFamily: '"Press Start 2P", monospace' }}>
             <span>{hasHammer ? '✓ HAMMER' : 'HAMMER 🔨'}</span><span className="text-[9px]">8 Wood (Unlocks Building)</span>

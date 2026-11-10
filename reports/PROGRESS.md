@@ -24,17 +24,17 @@ Legend: `Todo` · `In progress` · `Done` · `Partial` · `Skipped`
 
 | Key | Title | Status |
 |---|---|---|
-| RAFT-101 | Fix kraken kill `health = 100` exploit (clamp; reward heal) | Todo |
-| RAFT-102 | Proper 2D hitboxes for spear vs shark/kraken/frog (shared `attackArc`) | Todo |
-| RAFT-103 | Loot & XP drops from frog/shark/kraken kills | Todo |
-| RAFT-104 | Day-based threat scaling (spawn rate, HP, damage, enemy tiers) | Todo |
-| RAFT-105 | Shark AI: remove "safe middle" exploit | Todo |
-| RAFT-106 | Weapon tiers: Wooden → Stone/Scrap → Reinforced spear | Todo |
+| RAFT-101 | Fix kraken kill `health = 100` exploit (clamp; reward heal) | Done |
+| RAFT-102 | Proper 2D hitboxes for spear vs shark/kraken/frog (shared `attackArc`) | Done |
+| RAFT-103 | Loot & XP drops from frog/shark/kraken kills | Done |
+| RAFT-104 | Day-based threat scaling (spawn rate, HP, damage, enemy tiers) | Done |
+| RAFT-105 | Shark AI: remove "safe middle" exploit | Done |
+| RAFT-106 | Weapon tiers: Wooden → Stone/Scrap → Reinforced spear | Done |
 | RAFT-107 | Ranged weapon: bow/harpoon gun with ammo | Skipped (P2) |
-| RAFT-108 | Enemy health bars, damage numbers, hit-flash, hit-stop, SFX | Todo |
+| RAFT-108 | Enemy health bars, damage numbers, hit-flash, hit-stop, SFX | Done |
 | RAFT-109 | New enemy types (seagull, pirate raft, jellyfish) | Skipped (P2) |
-| RAFT-110 | Frog projectiles & shark bites interact with walls | Todo |
-| RAFT-111 | Apply `DIFF.damageMult` to ALL damage sources | Todo |
+| RAFT-110 | Frog projectiles & shark bites interact with walls | Done |
+| RAFT-111 | Apply `DIFF.damageMult` to ALL damage sources | Done |
 
 ## Phase 2 — Construction & Base Building (RAFT-E2)
 
@@ -67,7 +67,7 @@ Legend: `Todo` · `In progress` · `Done` · `Partial` · `Skipped`
 
 | Key | Title | Status |
 |---|---|---|
-| RAFT-401 | Apply `DIFF.hungerRate/thirstRate` to hunger/thirst drain | Todo |
+| RAFT-401 | Apply `DIFF.hungerRate/thirstRate` to hunger/thirst drain | Done (verified in Phase 1) |
 | RAFT-402 | Re-balance hunger/thirst/regen curves; per-day pressure | Todo |
 | RAFT-403 | Make Hook meaningful (far loot vs near auto-collect) | Todo |
 | RAFT-404 | Fishing: remove "touch = instant eat" | Todo |
