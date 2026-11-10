@@ -16,6 +16,7 @@ import PerkTree from '@/components/PerkTree';
 import Victory from '@/components/Victory';
 import SkinShop from '@/components/SkinShop';
 import BackgroundMusic from '@/components/BackgroundMusic';
+import DevTuningPanel from '@/components/DevTuningPanel';
 import { loadSnapshot, saveSnapshot, hasSnapshot, type GameSnapshot, type SnapshotStore } from '@/lib/save';
 import { nextWeaponTier, BASE_RAFT_HEIGHT, EXPAND_SIZE, MAX_HEALTH, type WeaponTier } from '@/lib/balance';
 import { DEFAULT_PROGRESSION, addXp, xpProgress, type ProgressionState } from '@/lib/systems/progression';
@@ -29,9 +30,13 @@ import {
   type ObjectiveStats,
 } from '@/lib/systems/objectives';
 
+// RAFT-406: the live tuning panel is a developer tool — never shipped.
+const IS_DEV = process.env.NODE_ENV !== 'production';
+
 export default function Home() {
   const [scene, setScene] = useState<'menu' | 'playing' | 'settings' | 'credits' | 'coop' | 'achievements' | 'skins'>('menu');
   const [gameId, setGameId] = useState(0);
+  const [showDevPanel, setShowDevPanel] = useState(false);
   const [health, setHealth] = useState(5);
   const [hunger, setHunger] = useState(100);
   const [thirst, setThirst] = useState(100);
@@ -66,6 +71,8 @@ export default function Home() {
   const [objectiveIndex, setObjectiveIndex] = useState(0);
   const [objectiveFill, setObjectiveFill] = useState(0);
   const [cookedFish, setCookedFish] = useState(0);
+  // RAFT-405: dried fish produced by the drying rack.
+  const [driedFish, setDriedFish] = useState(0);
   const [isPerkOpen, setIsPerkOpen] = useState(false);
   const [rewardAction, setRewardAction] = useState<{ wood?: number; plastic?: number; id: number } | null>(null);
   // RAFT-306: win screen.
@@ -228,6 +235,12 @@ export default function Home() {
   // Keyboard shortcuts for crafting, sit, lay
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // RAFT-406: F4 toggles the dev tuning panel (development builds only).
+      if (e.key === 'F4' && IS_DEV) {
+        e.preventDefault();
+        setShowDevPanel((prev) => !prev);
+        return;
+      }
       if (scene !== 'playing' || gameOver || showPause || isPerkOpen) return;
       if (e.key.toLowerCase() === 'c') setIsCraftingOpen(prev => !prev);
       if (e.key.toLowerCase() === 'r') setIsRecipeBookOpen(prev => !prev);
@@ -240,7 +253,7 @@ export default function Home() {
 
   // Raft expansion (handled directly in handleCraft to avoid a state-sync effect)
 
-  const handleStatsUpdate = useCallback((stats: { health: number; hunger: number; thirst: number; fish: number; day: number; wood: number; plastic: number; raftHealth: number; walls?: number; roofs?: number; floors?: number; raftSize?: number; capacity?: number; damaged?: boolean; cookedFish?: number; kills?: number; islands?: number; structures?: number; crafted?: number; woodGathered?: number; fishCaught?: number }) => {
+  const handleStatsUpdate = useCallback((stats: { health: number; hunger: number; thirst: number; fish: number; day: number; wood: number; plastic: number; raftHealth: number; walls?: number; roofs?: number; floors?: number; raftSize?: number; capacity?: number; damaged?: boolean; cookedFish?: number; driedFish?: number; kills?: number; islands?: number; structures?: number; crafted?: number; woodGathered?: number; fishCaught?: number }) => {
     setHealth(stats.health);
     setHunger(stats.hunger);
     setThirst(stats.thirst ?? 100);
@@ -257,6 +270,7 @@ export default function Home() {
     if (typeof stats.floors === 'number') setFloors(stats.floors);
     if (typeof stats.damaged === 'boolean') setNeedsRepair(stats.damaged);
     if (typeof stats.cookedFish === 'number') setCookedFish(stats.cookedFish);
+    if (typeof stats.driedFish === 'number') setDriedFish(stats.driedFish);
 
     // RAFT-304: fold the monotonic run counters into the objective tracker and
     // advance the chain, granting rewards for anything that just completed.
@@ -300,6 +314,8 @@ export default function Home() {
 
   const handleCook = () => { window.__cookFish?.(); };
   const handleEatCooked = () => { window.__eatCookedFish?.(); };
+  // RAFT-405: eat a dried fish (the drying rack's output).
+  const handleEatDried = () => { window.__eatDriedFish?.(); };
 
   const handleEat = () => {
     window.__eatFishFromGame?.();
@@ -364,6 +380,8 @@ export default function Home() {
     setThirst(100);
     setRaftHealth(100);
     setFish(0);
+    setCookedFish(0);
+    setDriedFish(0);
     setDay(1);
     setWood(0);
     setPlastic(0);
@@ -453,6 +471,7 @@ export default function Home() {
     objectiveStatsRef.current = { ...EMPTY_OBJECTIVE_STATS };
     setObjectiveFill(0);
     setCookedFish(data.cookedFish);
+    setDriedFish(data.driedFish);
     setRewardAction(null);
     setVictory(false);
     setHasSave(true);
@@ -550,6 +569,7 @@ export default function Home() {
             onEat={handleEat}
             onCook={handleCook}
             onEatCooked={handleEatCooked}
+            onEatDried={handleEatDried}
             onDrink={handleDrink}
             onAttack={handleAttack}
             onHook={handleHook}
@@ -564,6 +584,7 @@ export default function Home() {
             objective={activeObjective ? activeObjective.text : null}
             objectiveFill={objectiveFill}
             cookedFish={cookedFish}
+            driedFish={driedFish}
             freePerkPoints={progression.perkPoints}
             onOpenPerks={() => setIsPerkOpen(true)}
             playerState={playerState}
@@ -573,6 +594,7 @@ export default function Home() {
           {isRecipeBookOpen && (
             <RecipeBook onClose={() => setIsRecipeBookOpen(false)} />
           )}
+          {IS_DEV && showDevPanel && <DevTuningPanel onClose={() => setShowDevPanel(false)} />}
           {isCraftingOpen && (
             <CraftingMenu
               onClose={() => setIsCraftingOpen(false)}

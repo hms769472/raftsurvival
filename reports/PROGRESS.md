@@ -68,11 +68,11 @@ Legend: `Todo` · `In progress` · `Done` · `Partial` · `Skipped`
 | Key | Title | Status |
 |---|---|---|
 | RAFT-401 | Apply `DIFF.hungerRate/thirstRate` to hunger/thirst drain | Done (verified in Phase 1) |
-| RAFT-402 | Re-balance hunger/thirst/regen curves; per-day pressure | Todo |
-| RAFT-403 | Make Hook meaningful (far loot vs near auto-collect) | Todo |
-| RAFT-404 | Fishing: remove "touch = instant eat" | Todo |
-| RAFT-405 | Cooking loop: cooked fish HUD count, food tiers | Todo |
-| RAFT-406 | Central `balance.json` + in-dev tuning panel | Todo |
+| RAFT-402 | Re-balance hunger/thirst/regen curves; per-day pressure | Done |
+| RAFT-403 | Make Hook meaningful (far loot vs near auto-collect) | Done |
+| RAFT-404 | Fishing: remove "touch = instant eat" | Done |
+| RAFT-405 | Cooking loop: cooked fish HUD count, food tiers | Done (dried-fish tier added; spoilage deferred) |
+| RAFT-406 | Central `balance.json` + in-dev tuning panel | Done (`lib/balance.ts` + F4 dev panel) |
 
 ## Phase 5 — Onboarding, UX & Controls (RAFT-E5)
 

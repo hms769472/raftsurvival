@@ -113,3 +113,29 @@ Branch: `feature/raft-v0.2` · Start tag: `phase-start`
 
 ---
 
+## Phase 4 — Survival Economy & Balance (RAFT-E4) — tag `phase-4`
+
+**Commit:** _(this commit)_
+
+**Added**
+- `lib/balance.ts` (block) — survival economy: `DIFFICULTY`, drain/regen/starve/drown rates, `DAY_PRESSURE_*`, `FOOD_TIERS`, `FISH_YIELD`/`GOLDEN_FISH_BONUS`, hook constants, `RARE_ITEM_*`, `DEATH_LOG_LIMIT`, and the mutable `TUNABLE`/`DEFAULT_TUNABLE`/`TUNABLE_RANGE` + `setTunable`/`resetTunable`
+- `components/DevTuningPanel.tsx` — dev-only F4 live-tuning panel (never shipped)
+- `lib/balance.test.ts` — 5 Vitest regression tests for the RAFT-402 curve + RAFT-406 tuning surface
+
+**Modified**
+- `components/Game.tsx` — difficulty from `DIFFICULTY`; `TUNABLE`-driven drain/drown/regen; per-day pressure; `describeDeath`/`logDeath` (local `raftDeathLog`); `FOOD_TIERS` eat paths + `__eatDriedFish`; drying rack → `driedFish`; rare side-lane loot + golden glow (`spawnItem`/`grantHookedItem`); hook auto-target/reel (`findHookTarget`); **spear-fishing**; **removed touch-to-eat loop + `eatCooldown`**
+- `lib/save.ts` — `SAVE_VERSION 6`; `driedFish` field + normalization
+- `components/HUD.tsx` — dried-fish slot + 🥓 Eat Dried button; `driedFish`/`onEatDried` props
+- `app/page.tsx` — `driedFish` state/wiring; `handleEatDried`; `IS_DEV` + F4 toggle; `<DevTuningPanel>` (dev only)
+- `types/game-globals.d.ts` — typed `__eatDriedFish`
+
+**Tickets:** RAFT-401,402,403,404,405,406 Done
+
+**Dependencies:** none added.
+
+**Config/data:** save schema v5 → v6 (`driedFish`; old saves default to 0). New local key `raftDeathLog`.
+
+**Verification:** tsc 0 errors · lint 0 errors / 33 warnings · build OK · vitest 61/61 passing
+
+---
+

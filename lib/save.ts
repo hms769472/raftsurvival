@@ -11,7 +11,7 @@ import type { StoredTile } from '@/lib/systems/raft';
 import { DEFAULT_PROGRESSION, normalizeProgression, type ProgressionState } from '@/lib/systems/progression';
 import { normalizePerkRanks, type PerkRanks } from '@/lib/systems/perks';
 
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 export const SAVE_KEY = 'raftSave';
 
 export type GameSnapshot = {
@@ -24,6 +24,8 @@ export type GameSnapshot = {
   thirst: number;
   fish: number;
   cookedFish: number;
+  /** RAFT-405: dried fish from the drying rack. */
+  driedFish: number;
   day: number;
   wood: number;
   plastic: number;
@@ -62,6 +64,7 @@ export const DEFAULT_SNAPSHOT: GameSnapshot = {
   thirst: 100,
   fish: 0,
   cookedFish: 0,
+  driedFish: 0,
   day: 1,
   wood: 0,
   plastic: 0,
@@ -103,6 +106,7 @@ export function normalizeSnapshot(raw: unknown): GameSnapshot {
     thirst: asNumber(r.thirst, DEFAULT_SNAPSHOT.thirst),
     fish: asNumber(r.fish, DEFAULT_SNAPSHOT.fish),
     cookedFish: asNumber(r.cookedFish, DEFAULT_SNAPSHOT.cookedFish),
+    driedFish: asNumber(r.driedFish, DEFAULT_SNAPSHOT.driedFish),
     day: asNumber(r.day, DEFAULT_SNAPSHOT.day),
     wood: asNumber(r.wood, DEFAULT_SNAPSHOT.wood),
     plastic: asNumber(r.plastic, DEFAULT_SNAPSHOT.plastic),

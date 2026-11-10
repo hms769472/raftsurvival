@@ -55,6 +55,25 @@ import {
   CHEST_SPAWN_PERIOD,
   ISLAND_LOOT,
   CHEST_LOOT,
+  // RAFT-E4 survival economy
+  DIFFICULTY,
+  FOOD_TIERS,
+  FISH_YIELD,
+  GOLDEN_FISH_BONUS,
+  HOOK_REACH,
+  HOOK_SPEED,
+  HOOK_COOLDOWN,
+  HOOK_PULL_SPEED,
+  RARE_ITEM_CHANCE,
+  RARE_ITEM_BONUS,
+  DAY_PRESSURE_STEP,
+  DAY_PRESSURE_MAX,
+  WATER_THIRST_RESTORE,
+  WATER_BARREL_COST,
+  DEATH_LOG_LIMIT,
+  TUNABLE,
+  type DifficultyKey,
+  type DeathCause,
   type WeaponTier,
   type LootType,
   type LootDrop,
@@ -145,7 +164,7 @@ type GameProps = {
 type Frog = { x: number; y: number; width: number; height: number; shootTimer: number; direction: number; hopPhase: number; };
 type Projectile = { x: number; y: number; vx: number; vy: number; size: number; };
 type Raindrop = { x: number; y: number; length: number; speed: number; };
-type Item = { x: number; y: number; width: number; height: number; speed: number; type: 'wood' | 'plastic' | 'fish'; rotation: number; rotationSpeed: number; };
+type Item = { x: number; y: number; width: number; height: number; speed: number; type: 'wood' | 'plastic' | 'fish'; rotation: number; rotationSpeed: number; rare?: boolean; };
 type Shark = { x: number; y: number; vx: number; vy: number; width: number; height: number; speed: number; health: number; maxHealth: number; hitFlash: number; state: 'wandering' | 'attacking' | 'passing' | 'retreating'; attackTimer: number; tailPhase: number; willAttack: boolean; mouthOpen: number; };
 type TreasureChest = {
   x: number;
@@ -789,7 +808,6 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     let rainTimer = 0;
     let spawnTimer = 0;
     let attackTimer = 0;
-    let eatCooldown = 0;
     // SKIN COLORS
     const SKIN_MAP: Record<string, SkinDefinition> = { 'default': { c: '#8B4513', a: '#A0522D' }, 'dark': { c: '#3E2723', a: '#5D4037' }, 'bamboo': { c: '#F9A825', a: '#FBC02D' }, 'ice': { c: '#B3E5FC', a: '#E1F5FE' }, 'lava': { c: '#BF360C', a: '#E64A19' }, 'gold': { c: '#FFD700', a: '#FFF176' }, 'neon': { c: '#9C27B0', a: '#E040FB' }, 'dragon': { c: '#1B5E20', a: '#4CAF50' } };
     let activeSkin = 'default';
@@ -797,6 +815,7 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     let kraken: Kraken | null = null;
     let krakenTimer = 0;
     let cookedFish = initialState?.cookedFish ?? 0;
+    let driedFish = initialState?.driedFish ?? 0; // RAFT-405
     let cookingTimer = 0;
     let barrelWater = initialState?.barrelWater ?? 0; // 0-100 — how much water is in the rain barrel
     if (typeof window !== 'undefined') window.__barrelWater = barrelWater;
@@ -813,46 +832,42 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     let woodGathered = 0;
     let fishCaught = 0;
 
-    // === DIFFICULTY SETTINGS ===
-    const getDifficulty = (): 'easy' | 'normal' | 'hard' => {
+    // === DIFFICULTY SETTINGS (RAFT-406: values live in balance.ts) ===
+    const getDifficulty = (): DifficultyKey => {
       if (typeof window === 'undefined') return 'normal';
       const stored = localStorage.getItem('raftSettings');
       if (stored) {
         try {
-          return JSON.parse(stored).difficulty ?? 'normal';
+          const d = JSON.parse(stored).difficulty;
+          if (d === 'easy' || d === 'normal' || d === 'hard') return d;
         } catch { return 'normal'; }
       }
       return 'normal';
     };
     const diff = getDifficulty();
 
-    // Difficulty multipliers
-    const DIFF = {
-      easy: {
-        hungerRate: 0.6,        // 40% slower hunger
-        thirstRate: 0.6,        // 40% slower thirst
-        damageMult: 0.5,        // Half damage from enemies
-        enemySpawnMult: 1.5,    // Enemies spawn 50% less often
-        regenBonus: 1.5,        // 50% faster HP regen
-        sharkRetreatMult: 1.5,  // Shark retreats 50% longer
-      },
-      normal: {
-        hungerRate: 1.0,
-        thirstRate: 1.0,
-        damageMult: 1.0,
-        enemySpawnMult: 1.0,
-        regenBonus: 1.0,
-        sharkRetreatMult: 1.0,
-      },
-      hard: {
-        hungerRate: 1.6,        // 60% faster hunger
-        thirstRate: 1.6,        // 60% faster thirst
-        damageMult: 1.5,        // 50% more damage
-        enemySpawnMult: 0.6,    // Enemies spawn 40% more often
-        regenBonus: 0.5,        // 50% slower regen
-        sharkRetreatMult: 0.6,  // Shark returns 40% faster
-      },
-    }[diff];
+    // Difficulty multipliers sourced from the single central config.
+    const DIFF = DIFFICULTY[diff];
+
+    // RAFT-402: local-only cause-of-death telemetry. Never leaves the browser;
+    // read back by the dev tuning panel / playtests to tune the balance curves.
+    const describeDeath = (): DeathCause => {
+      if (isInWater) return 'drowned';
+      if (statsRef.current.raftHealth <= 0) return 'sank';
+      if (statsRef.current.hunger <= 0) return 'starved';
+      if (statsRef.current.thirst <= 0) return 'dehydrated';
+      return 'killed';
+    };
+    const logDeath = () => {
+      if (typeof window === 'undefined') return;
+      try {
+        const raw = localStorage.getItem('raftDeathLog');
+        const arr: { cause: DeathCause; day: number; at: number }[] = raw ? JSON.parse(raw) : [];
+        arr.push({ cause: describeDeath(), day: statsRef.current.day, at: Date.now() });
+        while (arr.length > DEATH_LOG_LIMIT) arr.shift();
+        localStorage.setItem('raftDeathLog', JSON.stringify(arr));
+      } catch { /* storage disabled — never crash the game */ }
+    };
     const islands: Island[] = [];
     const shipwreckTimer = 0;
     const chests: TreasureChest[] = [];
@@ -1078,16 +1093,25 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       });
     };
 
+    // RAFT-403: some debris spawns as "rare" loot in the side lanes, outside the
+    // raft's column. It can never be auto-collected — only the hook can reach it
+    // — and it pays a bonus of both wood and plastic on collection.
     const spawnItem = () => {
       const types: ('wood' | 'plastic')[] = ['wood', 'plastic'];
+      const rare = Math.random() < RARE_ITEM_CHANCE;
+      const x = rare
+        ? (Math.random() < 0.5 ? Math.random() * 100 : 700 + Math.random() * 70)
+        : Math.random() * (800 - 30);
       items.push({
-        x: Math.random() * (800 - 30),
+        x,
         y: -40,
-        width: 40, height: 30,
-        speed: 2.5 + Math.random() * 2,
+        width: rare ? 46 : 40,
+        height: rare ? 34 : 30,
+        speed: rare ? 3.5 + Math.random() * 2 : 2.5 + Math.random() * 2,
         type: types[Math.floor(Math.random() * types.length)],
         rotation: 0,
         rotationSpeed: (Math.random() - 0.5) * 0.05,
+        rare,
       });
     };
 
@@ -1111,15 +1135,18 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       window.__eatFishFromGame = () => { console.log('[EAT RAW] clicked, fish=' + statsRef.current.fish);
         if (statsRef.current.fish > 0) {
           statsRef.current.fish -= 1;
-          statsRef.current.hunger = Math.min(100, statsRef.current.hunger + 40);
+          statsRef.current.hunger = Math.min(100, statsRef.current.hunger + FOOD_TIERS.raw.hunger); // RAFT-405
+          statsRef.current.health = applyHeal(statsRef.current.health, FOOD_TIERS.raw.health, MAX_HEALTH);
           bumpAch('totalFishEaten'); // RAFT-004
           playEatSound();
           onStatsUpdate(statsPayload());
         }
       };
-      window.__drinkWaterFromGame = () => { if (barrelWater >= 30 && statsRef.current.thirst < 100) { barrelWater -= 30; statsRef.current.thirst = Math.min(100, statsRef.current.thirst + 40); window.__barrelWater = barrelWater; onStatsUpdate(statsPayload()); } };
+      window.__drinkWaterFromGame = () => { if (barrelWater >= WATER_BARREL_COST && statsRef.current.thirst < 100) { barrelWater -= WATER_BARREL_COST; statsRef.current.thirst = Math.min(100, statsRef.current.thirst + WATER_THIRST_RESTORE); window.__barrelWater = barrelWater; onStatsUpdate(statsPayload()); } };
       window.__cookFish = () => { console.log('[COOK] clicked, hasFire=' + window.__hasCampfireRef + ' fish=' + statsRef.current.fish); const hasFire = window.__hasCampfireRef; if (hasFire && statsRef.current.fish > 0 && cookingTimer <= 0) { statsRef.current.fish -= 1; cookedFish += 1; cookingTimer = 180; onStatsUpdate(statsPayload()); } };
-      window.__eatCookedFish = () => { console.log('[EAT COOKED] clicked, cookedFish=' + cookedFish); if (cookedFish > 0) { cookedFish -= 1; statsRef.current.hunger = Math.min(100, statsRef.current.hunger + 60); bumpAch('totalFishEaten'); onStatsUpdate(statsPayload()); } };
+      window.__eatCookedFish = () => { console.log('[EAT COOKED] clicked, cookedFish=' + cookedFish); if (cookedFish > 0) { cookedFish -= 1; statsRef.current.hunger = Math.min(100, statsRef.current.hunger + FOOD_TIERS.cooked.hunger); statsRef.current.health = applyHeal(statsRef.current.health, FOOD_TIERS.cooked.health, MAX_HEALTH); bumpAch('totalFishEaten'); onStatsUpdate(statsPayload()); } };
+      // RAFT-405: dried fish (drying rack output) is the best food tier.
+      window.__eatDriedFish = () => { if (driedFish > 0) { driedFish -= 1; statsRef.current.hunger = Math.min(100, statsRef.current.hunger + FOOD_TIERS.dried.hunger); statsRef.current.health = applyHeal(statsRef.current.health, FOOD_TIERS.dried.health, MAX_HEALTH); bumpAch('totalFishEaten'); playEatSound(); onStatsUpdate(statsPayload()); } };
     }
 
     // RAFT-006/007: live snapshot the page reads to save/autosave the run.
@@ -1134,6 +1161,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         thirst: statsRef.current.thirst,
         fish: statsRef.current.fish,
         cookedFish,
+        driedFish,
         day: statsRef.current.day,
         wood: statsRef.current.wood,
         plastic: statsRef.current.plastic,
@@ -1207,6 +1235,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         floors: countKind(g, 'floor'),
         // RAFT-301/304/305: counters fed to the progression + objective systems.
         cookedFish,
+        driedFish,
         kills,
         islands: islandsFound,
         structures: structuresBuilt,
@@ -1342,6 +1371,47 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
     // RAFT-204: count intact grid walls (structures are the source of truth).
     const intactWalls = () => buildGridRef.current.tiles.filter((t) => t.kind === 'wall' && t.hp > 0).length;
 
+    // RAFT-404: fish are worth more when bigger; golden fish pay a rare bonus.
+    const fishYield = (f: Fish): number =>
+      FISH_YIELD[f.sizeCategory] + (f.isGolden ? GOLDEN_FISH_BONUS : 0);
+    const yieldFish = (f: Fish) => {
+      const amount = fishYield(f);
+      statsRef.current.fish += amount;
+      fishCaught += amount;
+      onXp(XP_REWARDS.catchFish);
+    };
+
+    // RAFT-403: a hooked item is reeled straight into storage. Rare loot adds a
+    // bonus of both wood and plastic and floats a pickup number.
+    const grantHookedItem = (it: Item) => {
+      if (it.type === 'wood') { statsRef.current.wood += 1; woodGathered += 1; bumpAch('totalWood'); onXp(XP_REWARDS.gatherWood); }
+      else if (it.type === 'plastic') { statsRef.current.plastic += 1; bumpAch('totalPlastic'); onXp(XP_REWARDS.gatherPlastic); }
+      else { statsRef.current.fish += 1; fishCaught += 1; onXp(XP_REWARDS.catchFish); }
+      if (it.rare) {
+        statsRef.current.wood += RARE_ITEM_BONUS;
+        statsRef.current.plastic += RARE_ITEM_BONUS;
+        woodGathered += RARE_ITEM_BONUS;
+        lootDrops.push({ x: it.x, y: it.y, type: 'wood', amount: RARE_ITEM_BONUS, life: 60, vy: -0.9 });
+        lootDrops.push({ x: it.x, y: it.y, type: 'plastic', amount: RARE_ITEM_BONUS, life: 60, vy: -0.9 });
+      }
+      onStatsUpdate(statsPayload());
+    };
+
+    // RAFT-403: the nearest debris within the hook's reach becomes the target.
+    const findHookTarget = (): Item | null => {
+      const px = player.x + player.width / 2;
+      const py = player.y + player.height / 2;
+      let best: Item | null = null;
+      let bestD = HOOK_REACH;
+      for (const it of items) {
+        const dx = (it.x + it.width / 2) - px;
+        const dy = (it.y + it.height / 2) - py;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < bestD) { bestD = d; best = it; }
+      }
+      return best;
+    };
+
     const update = () => {
       if (gameOver || paused) return;
 // ===== CLOUDS =====
@@ -1414,7 +1484,9 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       const raftScreenX = raftRef.current.x + raftBobX;
       const raftDeltaX = raftScreenX - lastRaftX;
 
-      // RAFT-111: difficulty drives the hunger/thirst drain rates.
+      // RAFT-402: difficulty + weather + perks + per-day pressure drive the
+      // hunger/thirst drain. Rates come from the central balance config and the
+      // mutable TUNABLE surface (dev tuning panel) so playtests can re-tune live.
       // RAFT-203: an intact roof shelters the deck and negates weather strain.
       // RAFT-302: Survivor perks slow the hunger/thirst drain; Fighter "Vigor"
       // raises the health cap (maxHealth below).
@@ -1422,12 +1494,13 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       const maxHealth = MAX_HEALTH + perkRef.current.maxHealthBonus;
       const hungerWeather = sheltered ? 1 : weatherType === 'snow' ? WEATHER_SNOW_HUNGER : weatherType === 'rain' ? WEATHER_RAIN_DRAIN : 1;
       const thirstWeather = sheltered ? 1 : weatherType === 'heat' ? WEATHER_HEAT_THIRST : weatherType === 'rain' ? WEATHER_RAIN_DRAIN : 1;
-      statsRef.current.hunger -= 0.005 * DIFF.hungerRate * hungerWeather * perkRef.current.hungerMult;
+      const dayPressure = Math.min(DAY_PRESSURE_MAX, 1 + (statsRef.current.day - 1) * DAY_PRESSURE_STEP);
+      statsRef.current.hunger -= TUNABLE.hungerDrain * DIFF.hungerRate * hungerWeather * perkRef.current.hungerMult * dayPressure;
       if (statsRef.current.hunger < 0) statsRef.current.hunger = 0;
-      statsRef.current.thirst -= 0.004 * DIFF.thirstRate * thirstWeather * perkRef.current.thirstMult;
+      statsRef.current.thirst -= TUNABLE.thirstDrain * DIFF.thirstRate * thirstWeather * perkRef.current.thirstMult * dayPressure;
       if (statsRef.current.thirst < 0) statsRef.current.thirst = 0;
       if (statsRef.current.thirst === 0) {
-        statsRef.current.health = applyDamage(statsRef.current.health, 0.003 * DIFF.damageMult);
+        statsRef.current.health = applyDamage(statsRef.current.health, TUNABLE.starveDamage * DIFF.damageMult);
       }
       if (isRaining && window.__hasRainBarrelRef && barrelWater < 100) {
         barrelWater = Math.min(100, barrelWater + 0.05);
@@ -1438,17 +1511,17 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         barrelWater = Math.min(100, barrelWater + 1);
         window.__barrelWater = barrelWater;
       }
-      // RAFT-208: fish drying rack cures a raw fish into food over time.
+      // RAFT-405: fish drying rack cures a raw fish into a dried fish over time.
       if (countKind(buildGridRef.current, 'dryingrack') > 0 && statsRef.current.fish > 0 && time % DRYING_RACK_PERIOD === 0) {
         statsRef.current.fish -= 1;
-        cookedFish += 1;
+        driedFish += 1;
       }
       // RAFT-208: storage crates raise the wood/plastic cap.
       const storageCap = STORAGE_CAP_BASE + countKind(buildGridRef.current, 'crate') * CRATE_CAPACITY;
       if (statsRef.current.wood > storageCap) statsRef.current.wood = storageCap;
       if (statsRef.current.plastic > storageCap) statsRef.current.plastic = storageCap;
       if (statsRef.current.hunger === 0) {
-        statsRef.current.health = applyDamage(statsRef.current.health, 0.003 * DIFF.damageMult);
+        statsRef.current.health = applyDamage(statsRef.current.health, TUNABLE.starveDamage * DIFF.damageMult);
       }
 
       if (statsRef.current.health < prevHealth - 0.05 && damageCooldown <= 0) {
@@ -1461,7 +1534,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       if (damageFlash > 0) damageFlash--;
       if (damageCooldown > 0) damageCooldown--;
 
-      if (statsRef.current.health <= 0) { onGameOver(); return; }
+      if (statsRef.current.health <= 0) { logDeath(); onGameOver(); return; }
 
       // ===== THREAT SCALING (RAFT-104) =====
       // Day-based multipliers feed every spawn / HP / damage decision below.
@@ -1497,7 +1570,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
             buildGridRef.current = { tiles: tiles.slice(0, -1), nextId: buildGridRef.current.nextId };
           }
         }
-        if (sinkTimer > SINK_WARNING_FRAMES + SINK_TILE_LOSS_INTERVAL * 8) { onGameOver(); return; }
+        if (sinkTimer > SINK_WARNING_FRAMES + SINK_TILE_LOSS_INTERVAL * 8) { logDeath(); onGameOver(); return; }
       } else {
         sinkTimer = 0;
       }
@@ -1619,51 +1692,58 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
 
       const wasOnRaft = playerIsOnRaft;
 
-      // === HOOK LOGIC ===
+      // === HOOK LOGIC (RAFT-403) ===
+      // The hook auto-targets the nearest debris within HOOK_REACH and reels it
+      // in; debris outside the raft's column can ONLY be collected this way.
       if (hookCooldown > 0) hookCooldown--;
-      
+
       if (keys.H && hookState === 'idle' && hookCooldown <= 0) {
         hookState = 'throwing';
         hookThrowProgress = 0;
         hookX = player.x + player.width / 2;
         hookY = player.y + player.height / 2;
+        hookTargetItem = findHookTarget();
       }
-      
+
       if (hookState === 'throwing') {
-        hookThrowProgress += 7;
-        hookY = player.y + player.height / 2 - hookThrowProgress;
-        for (let i = items.length - 1; i >= 0; i--) {
-          const it = items[i];
-          if (hookX >= it.x - 6 && hookX <= it.x + it.width + 6 &&
-              hookY >= it.y - 6 && hookY <= it.y + it.height + 6) {
-            hookTargetItem = it;
+        if (hookTargetItem) {
+          const tx = hookTargetItem.x + hookTargetItem.width / 2;
+          const ty = hookTargetItem.y + hookTargetItem.height / 2;
+          const dx = tx - hookX;
+          const dy = ty - hookY;
+          const d = Math.sqrt(dx * dx + dy * dy) || 1;
+          if (d <= HOOK_SPEED + 4) {
             hookState = 'pulling';
-            break;
+          } else {
+            hookX += (dx / d) * HOOK_SPEED;
+            hookY += (dy / d) * HOOK_SPEED;
           }
-        }
-        if (hookThrowProgress >= 280) {
-          hookState = 'returning';
+        } else {
+          // No debris in reach — the hook just shoots straight up and returns.
+          hookThrowProgress += HOOK_SPEED;
+          hookY -= HOOK_SPEED;
+          if (hookThrowProgress >= HOOK_REACH) hookState = 'returning';
         }
       }
-      
+
       if (hookState === 'pulling' && hookTargetItem) {
         const dx = (player.x + player.width / 2) - (hookTargetItem.x + hookTargetItem.width / 2);
         const dy = (player.y + player.height / 2) - (hookTargetItem.y + hookTargetItem.height / 2);
         const dist = Math.sqrt(dx * dx + dy * dy) || 1;
         if (dist < 40) {
-          statsRef.current[hookTargetItem.type]++;
+          grantHookedItem(hookTargetItem);
           const idx = items.indexOf(hookTargetItem);
           if (idx >= 0) items.splice(idx, 1);
           hookTargetItem = null;
           hookState = 'returning';
         } else {
-          hookTargetItem.x += (dx / dist) * 5;
-          hookTargetItem.y += (dy / dist) * 5;
+          hookTargetItem.x += (dx / dist) * HOOK_PULL_SPEED;
+          hookTargetItem.y += (dy / dist) * HOOK_PULL_SPEED;
           hookX = hookTargetItem.x + hookTargetItem.width / 2;
           hookY = hookTargetItem.y + hookTargetItem.height / 2;
         }
       }
-      
+
       if (hookState === 'returning') {
         const tx = player.x + player.width / 2;
         const ty = player.y + player.height / 2;
@@ -1672,7 +1752,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         const dist = Math.sqrt(dx * dx + dy * dy) || 1;
         if (dist < 15) {
           hookState = 'idle';
-          hookCooldown = 45;
+          hookCooldown = HOOK_COOLDOWN;
         } else {
           hookX += (dx / dist) * 12;
           hookY += (dy / dist) * 12;
@@ -1718,12 +1798,12 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       lastRaftX = raftScreenX;
 
       if (isInWater) {
-        statsRef.current.health -= 0.005;
-        if (statsRef.current.health < 0) statsRef.current.health = 0;
+        // RAFT-402: drowning damage is a central constant (dev-tunable).
+        statsRef.current.health = applyDamage(statsRef.current.health, TUNABLE.drownDamage);
       } else {
-        // Passive HP regen when well-fed and hydrated (not in water)
+        // RAFT-402: passive HP regen when well-fed and hydrated (not in water).
         const wellFed = statsRef.current.hunger > 50 && statsRef.current.thirst > 50;
-        const regenRate = (wellFed ? 0.004 : 0.001) * DIFF.regenBonus;
+        const regenRate = (wellFed ? TUNABLE.regenWellFed : TUNABLE.regenStarving) * DIFF.regenBonus;
         if (statsRef.current.health < maxHealth) statsRef.current.health = Math.min(maxHealth, statsRef.current.health + regenRate);
       }
 
@@ -1753,7 +1833,6 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       else if (fishingState === 'caught') { if (keys.F) { statsRef.current.fish += 1; fishCaught += 1; onXp(XP_REWARDS.catchFish); fishingState = 'idle'; } }
 
       if (attackTimer > 0) attackTimer--;
-      if (eatCooldown > 0) eatCooldown--;
       if (cookingTimer > 0) cookingTimer--;
       const weapon = WEAPON_TIERS[spearTierRef.current];
       // RAFT-302: Fighter "Might" boosts damage, "Swift" shortens cooldown.
@@ -1762,6 +1841,18 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         attackTimer = Math.max(1, Math.round(weapon.cooldown * perkRef.current.cooldownMult)); // RAFT-106/302
         playChopSound();
         let hitLanded = false;
+
+        // RAFT-404: spear-fishing — a fish caught in the swing is landed (its
+        // size/golden state decides how much food it yields).
+        for (let i = fishes.length - 1; i >= 0; i--) {
+          const f = fishes[i];
+          if (inAttackArc(player, f, SPEAR_REACH)) {
+            spawnDamageNumber(f.x + f.width / 2, f.y, fishYield(f), '#7BE0FF');
+            yieldFish(f);
+            fishes.splice(i, 1);
+            hitLanded = true;
+          }
+        }
 
         // RAFT-102: one shared 2D attack arc for every melee target. Enemies
         // outside the arc (including off-screen ones) are never hit.
@@ -2151,48 +2242,9 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         }
       }
 
-// === DEDICATED FISH-EATING CHECK (runs after fish positions are set) ===
-      // Player hitbox (generous)
-      const pLeft = player.x - 5;
-      const pRight = player.x + player.width + 5;
-      const pTop = player.y - 5;
-      const pBottom = player.y + player.height + 5;
-      
-      for (let i = fishes.length - 1; i >= 0; i--) {
-        const f = fishes[i];
-        const fLeft = f.x;
-        const fRight = f.x + f.width;
-        const fTop = f.y;
-        const fBottom = f.y + f.height;
-        
-        // Skip if fish just attached (1 second grace period)
-        if (f.graceTimer > 0) continue; // SKIP: fish is safe during grace // SKIP: fish is safe during grace
-        
-        // AABB overlap check
-        if (fLeft < pRight && fRight > pLeft && fTop < pBottom && fBottom > pTop) {
-          // EAT!
-          if (eatCooldown <= 0) {
-            statsRef.current.hunger = Math.min(100, statsRef.current.hunger + 20);
-            statsRef.current.fish += 1;
-            eatCooldown = 15;
-          }
-          
-          // Chomp particles (always)
-          for (let p = 0; p < 8; p++) {
-            wakeParticles.push({
-              x: f.x + f.width / 2,
-              y: f.y + f.height / 2,
-              size: 2 + Math.random() * 3,
-              speed: -1 - Math.random() * 1.5,
-              alpha: 0.9,
-              life: 40,
-            });
-          }
-          
-          // Fish ALWAYS disappears
-          fishes.splice(i, 1);
-        }
-      }
+      // RAFT-404: fish are no longer eaten by touch. They must be speared
+      // (see the attack block) or hooked; merely swimming into the player is
+      // now harmless, so the old touch-to-eat loop has been removed.
 
       // RAFT-104: frog pressure grows with the day (cap + spawn rate).
       const frogInterval = Math.max(60, Math.floor(FROG_SPAWN_INTERVAL * DIFF.enemySpawnMult / scale.spawnMult));
@@ -3496,6 +3548,16 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       chests.forEach((ch) => drawChest(ch));
 
       items.forEach((item) => {
+        // RAFT-403: rare loot glows so it reads as a bonus at a glance.
+        if (item.rare) {
+          ctx.save();
+          ctx.globalAlpha = 0.55 + 0.25 * Math.sin(time * 0.15);
+          ctx.fillStyle = '#FFD700';
+          ctx.beginPath();
+          ctx.arc(item.x + item.width / 2, item.y + item.height / 2, item.width * 0.95, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
         if (item.type === 'wood') drawWood(item);
         else drawPlastic(item);
       });

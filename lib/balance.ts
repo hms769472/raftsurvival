@@ -215,3 +215,109 @@ export const WIN_DAY = 20; // survive to this day to win
 
 // ===== Weather (RAFT-308) =====
 export const STORM_RAFT_DAMAGE = 0.02; // raft integrity lost per frame in a storm (no shelter)
+
+// ===== Survival economy (RAFT-E4 / RAFT-402) =====
+
+// Difficulty multipliers. Indexed by the value stored in `raftSettings.difficulty`.
+export type DifficultyKey = 'easy' | 'normal' | 'hard';
+export type DifficultyMods = {
+  hungerRate: number;
+  thirstRate: number;
+  damageMult: number;
+  enemySpawnMult: number;
+  regenBonus: number;
+  sharkRetreatMult: number;
+};
+export const DIFFICULTY: Record<DifficultyKey, DifficultyMods> = {
+  easy: { hungerRate: 0.6, thirstRate: 0.6, damageMult: 0.5, enemySpawnMult: 1.5, regenBonus: 1.5, sharkRetreatMult: 1.5 },
+  normal: { hungerRate: 1.0, thirstRate: 1.0, damageMult: 1.0, enemySpawnMult: 1.0, regenBonus: 1.0, sharkRetreatMult: 1.0 },
+  hard: { hungerRate: 1.6, thirstRate: 1.6, damageMult: 1.5, enemySpawnMult: 0.6, regenBonus: 0.5, sharkRetreatMult: 0.6 },
+};
+
+// Per-frame drain from a full bar (100) at Normal difficulty. Tuned so a
+// player taking no action at all runs out of food ~8 min and water ~9.3 min,
+// i.e. a median first run ends inside the 8-12 min target window; eating /
+// drinking pushes it well past that. Hard is 1.6x → death well before Day 5.
+export const HUNGER_DRAIN = 0.0035; // ~0.21/s  → 100 in ~7.9 min
+export const THIRST_DRAIN = 0.003; // ~0.18/s  → 100 in ~9.3 min
+// Damage taken each frame while hunger OR thirst is pinned at 0.
+export const STARVE_DAMAGE = 0.0022;
+export const DROWN_DAMAGE = 0.005; // per frame swimming off the raft
+
+// Passive health regen per frame (raft, not in water).
+export const REGEN_WELL_FED = 0.004; // hunger > 50 && thirst > 50
+export const REGEN_STARVING = 0.001;
+
+// RAFT-402: each new day adds a small permanent pressure on top of difficulty,
+// so later days are harder even without enemies ("per-day pressure increase").
+export const DAY_PRESSURE_STEP = 0.04; // +4% hunger/thirst drain per day
+export const DAY_PRESSURE_MAX = 2.0; // drain pressure caps at 2x
+
+// Drinking: a mouthful of barrel water restores thirst (RAFT-405 water loop).
+export const WATER_THIRST_RESTORE = 40;
+export const WATER_BARREL_COST = 30;
+
+// RAFT-402: local cause-of-death telemetry (never leaves the browser).
+export type DeathCause = 'starved' | 'dehydrated' | 'drowned' | 'killed' | 'sank';
+
+// RAFT-405: food tiers — hunger restored (and health) per item eaten.
+export type FoodTier = 'raw' | 'cooked' | 'dried';
+export const FOOD_TIERS: Record<FoodTier, { hunger: number; health: number }> = {
+  raw: { hunger: 35, health: 0 },
+  cooked: { hunger: 60, health: 0 },
+  dried: { hunger: 80, health: 0.5 },
+};
+
+// RAFT-404: food yielded per fish caught, by size/rarity. Golden fish are a
+// rare bonus catch worth extra.
+export const FISH_YIELD: Record<'small' | 'medium' | 'large', number> = { small: 1, medium: 2, large: 3 };
+export const GOLDEN_FISH_BONUS = 2;
+
+// ===== Hook (RAFT-403) =====
+export const HOOK_REACH = 340; // how far up the hook is thrown (px)
+export const HOOK_SPEED = 8; // px/frame throw speed
+export const HOOK_COOLDOWN = 30; // frames between throws
+export const HOOK_PULL_SPEED = 5; // px/frame item is reeled in
+// Chance that a spawned debris item is a "rare" one: it floats in a side lane
+// away from the raft (never auto-collected) and must be hooked.
+export const RARE_ITEM_CHANCE = 0.18;
+export const RARE_ITEM_BONUS = 3; // extra wood AND plastic granted on hook
+
+// ===== Death log (RAFT-402) =====
+export const DEATH_LOG_LIMIT = 10;
+
+// ===== Dev tuning panel (RAFT-406) =====
+// The single mutable surface a developer can tweak live from the in-game F4
+// panel. The game loop reads from here every frame, so edits apply instantly
+// without a reload. In production the panel is never mounted and these values
+// stay at their defaults.
+export const TUNABLE = {
+  hungerDrain: HUNGER_DRAIN,
+  thirstDrain: THIRST_DRAIN,
+  starveDamage: STARVE_DAMAGE,
+  drownDamage: DROWN_DAMAGE,
+  regenWellFed: REGEN_WELL_FED,
+  regenStarving: REGEN_STARVING,
+};
+export type TunableKey = keyof typeof TUNABLE;
+export const DEFAULT_TUNABLE = { ...TUNABLE };
+/** Bounds used by the tuning panel sliders (min/max/step). */
+export const TUNABLE_RANGE: Record<TunableKey, { min: number; max: number; step: number }> = {
+  hungerDrain: { min: 0, max: 0.02, step: 0.0005 },
+  thirstDrain: { min: 0, max: 0.02, step: 0.0005 },
+  starveDamage: { min: 0, max: 0.02, step: 0.0002 },
+  drownDamage: { min: 0, max: 0.03, step: 0.0005 },
+  regenWellFed: { min: 0, max: 0.03, step: 0.0005 },
+  regenStarving: { min: 0, max: 0.02, step: 0.0005 },
+};
+
+// RAFT-406: mutation helpers so the dev panel never writes to the shared
+// `TUNABLE` object from inside a React component (which the lint rules forbid).
+export function setTunable(key: TunableKey, value: number): void {
+  TUNABLE[key] = value;
+}
+export function resetTunable(): void {
+  (Object.keys(DEFAULT_TUNABLE) as TunableKey[]).forEach((key) => {
+    TUNABLE[key] = DEFAULT_TUNABLE[key];
+  });
+}

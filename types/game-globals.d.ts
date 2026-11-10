@@ -34,6 +34,8 @@ declare global {
     __drinkWaterFromGame?: () => void;
     __cookFish?: () => void;
     __eatCookedFish?: () => void;
+    /** RAFT-405: eat a dried fish from the drying rack. */
+    __eatDriedFish?: () => void;
     /** XP sink for kills/loot (wired to the progression system in Phase 3). */
     __onXpFromGame?: (amount: number) => void;
 

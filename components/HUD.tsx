@@ -4,7 +4,7 @@ import React from 'react';
 type HUDProps = {
   health: number; hunger: number; thirst: number; fish: number; day: number; wood: number; plastic: number;
   onOpenCrafting: () => void; onOpenRecipes: () => void;
-  onEat: () => void; onEatCooked: () => void; onCook: () => void; onDrink: () => void;
+  onEat: () => void; onEatCooked: () => void; onEatDried: () => void; onCook: () => void; onDrink: () => void;
   onAttack: () => void; onHook: () => void;
   hasSpear: boolean; hasRainBarrel: boolean; barrelWater: number; raftHealth: number;
   /** RAFT-208: wood/plastic storage cap (raised by crates). */
@@ -17,6 +17,8 @@ type HUDProps = {
   objective: string | null; objectiveFill: number;
   /** RAFT-305: cooked fish held (drying rack / campfire). */
   cookedFish: number;
+  /** RAFT-405: dried fish held (drying rack output). */
+  driedFish: number;
   /** RAFT-302: open the perk tree; shows a badge when points are available. */
   freePerkPoints: number; onOpenPerks: () => void;
   playerState: 'standing' | 'sitting' | 'laying';
@@ -24,7 +26,7 @@ type HUDProps = {
   onMainMenu: () => void;
 };
 
-export default function HUD({ health, hunger, thirst, fish, day, wood, plastic, onOpenCrafting, onOpenRecipes, onEat, onEatCooked, onCook, onDrink, onAttack, onHook, hasSpear, hasRainBarrel, barrelWater, raftHealth, storageCap, maxHearts, level, xpFill, objective, objectiveFill, cookedFish, freePerkPoints, onOpenPerks, playerState, onPoseChange, onMainMenu }: HUDProps) {
+export default function HUD({ health, hunger, thirst, fish, day, wood, plastic, onOpenCrafting, onOpenRecipes, onEat, onEatCooked, onEatDried, onCook, onDrink, onAttack, onHook, hasSpear, hasRainBarrel, barrelWater, raftHealth, storageCap, maxHearts, level, xpFill, objective, objectiveFill, cookedFish, driedFish, freePerkPoints, onOpenPerks, playerState, onPoseChange, onMainMenu }: HUDProps) {
   return (
     <>
       <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>
@@ -68,7 +70,7 @@ export default function HUD({ health, hunger, thirst, fish, day, wood, plastic, 
           <div className="flex gap-1 pointer-events-auto">
             {[1, 2, 3, 4, 5].map((slot) => (
               <div key={slot} className="w-12 h-12 bg-[#E6A15E] border-[3px] border-[#8B4513] shadow-[inset_0_0_5px_rgba(0,0,0,0.5)] flex items-center justify-center text-xl">
-                {slot === 1 && fish > 0 ? `🐟x${fish}` : slot === 2 && cookedFish > 0 ? `🍗x${cookedFish}` : ''}
+                {slot === 1 && fish > 0 ? `🐟x${fish}` : slot === 2 && cookedFish > 0 ? `🍗x${cookedFish}` : slot === 3 && driedFish > 0 ? `🥓x${driedFish}` : ''}
               </div>
             ))}
           </div>
@@ -88,6 +90,7 @@ export default function HUD({ health, hunger, thirst, fish, day, wood, plastic, 
               {hasSpear && (<div onClick={onAttack} className="w-14 h-14 bg-[#D35400] border-[3px] border-[#A04000] rounded-full flex items-center justify-center text-2xl cursor-pointer" title="Attack">🔱</div>)}
               <div onClick={onCook} className="w-14 h-14 bg-[#E67E22] border-[3px] border-[#A04000] rounded-full flex items-center justify-center text-2xl cursor-pointer active:scale-90 transition-transform" title="Cook Fish">🍳</div>
               <div onClick={onEatCooked} className="w-14 h-14 bg-[#F1C40F] border-[3px] border-[#B7950B] rounded-full flex items-center justify-center text-2xl cursor-pointer active:scale-90 transition-transform" title="Eat Cooked">🍽️</div>
+              {driedFish > 0 && (<div onClick={onEatDried} className="w-14 h-14 bg-[#B9770E] border-[3px] border-[#7E5109] rounded-full flex items-center justify-center text-2xl cursor-pointer active:scale-90 transition-transform" title="Eat Dried">🥓</div>)}
               <div onClick={onEat} className="w-14 h-14 bg-[#E74C3C] border-[3px] border-[#8B0000] rounded-full flex items-center justify-center text-2xl cursor-pointer active:scale-90 transition-transform" title="Eat Raw">🐟</div>
               {hasRainBarrel && (<div onClick={onDrink} className="w-14 h-14 bg-[#3498DB] border-[3px] border-[#1F618D] rounded-full flex items-center justify-center text-2xl cursor-pointer" title="Drink">💧</div>)}
               <div onClick={onOpenRecipes} className="w-14 h-14 bg-[#8E44AD] border-[3px] border-[#6C3483] rounded-full flex items-center justify-center text-2xl cursor-pointer" title="Recipes">📖</div>
