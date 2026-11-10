@@ -24,13 +24,23 @@ type HUDProps = {
   playerState: 'standing' | 'sitting' | 'laying';
   onPoseChange: (pose: 'standing' | 'sitting' | 'laying') => void;
   onMainMenu: () => void;
+  /** RAFT-505: nearest active threat, drives the flashing enemy warning. */
+  threat?: 'shark' | 'frog' | null;
 };
 
-export default function HUD({ health, hunger, thirst, fish, day, wood, plastic, onOpenCrafting, onOpenRecipes, onEat, onEatCooked, onEatDried, onCook, onDrink, onAttack, onHook, hasSpear, hasRainBarrel, barrelWater, raftHealth, storageCap, maxHearts, level, xpFill, objective, objectiveFill, cookedFish, driedFish, freePerkPoints, onOpenPerks, playerState, onPoseChange, onMainMenu }: HUDProps) {
+export default function HUD({ health, hunger, thirst, fish, day, wood, plastic, onOpenCrafting, onOpenRecipes, onEat, onEatCooked, onEatDried, onCook, onDrink, onAttack, onHook, hasSpear, hasRainBarrel, barrelWater, raftHealth, storageCap, maxHearts, level, xpFill, objective, objectiveFill, cookedFish, driedFish, freePerkPoints, onOpenPerks, playerState, onPoseChange, onMainMenu, threat }: HUDProps) {
   return (
     <>
       <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>
       <div className="absolute inset-0 pointer-events-none p-3 flex flex-col justify-between select-none">
+        {/* RAFT-505: flashing warning when an enemy is on the raft. */}
+        {threat && (
+          <div className="absolute top-2 left-1/2 transform -translate-x-1/2 z-10 pointer-events-none">
+            <div className="px-3 py-1 bg-[#E74C3C]/90 border-2 border-[#8B0000] rounded text-white text-[11px] font-bold tracking-wide" style={{ animation: 'pulse 0.6s infinite' }}>
+              {threat === 'shark' ? '🦈 SHARK ATTACK!' : '🐸 FROGS INCOMING!'}
+            </div>
+          </div>
+        )}
         <div className="flex justify-between items-start">
           <div className="flex flex-col gap-1 items-start">
             <div className="flex gap-1 text-lg drop-shadow-[0_2px_0_rgba(0,0,0,1)]">
@@ -41,10 +51,16 @@ export default function HUD({ health, hunger, thirst, fish, day, wood, plastic, 
               <div>Plastic: {plastic}/{storageCap}</div>
             </div>
             <div className="flex flex-col gap-1 mt-1">
-              <div className="w-36 h-3 bg-[#222] border border-black p-[1px]"><div className="h-full bg-[#F39C12]" style={{ width: `${Math.max(0, hunger)}%` }}></div></div>
-              <div className="w-36 h-3 bg-[#222] border border-black p-[1px]"><div className="h-full bg-[#3498DB]" style={{ width: `${Math.max(0, thirst)}%` }}></div></div>
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] w-3 text-center">🍖</span>
+                <div className="w-36 h-3 bg-[#222] border border-black p-[1px]"><div className="h-full bg-[#F39C12]" style={{ width: `${Math.max(0, hunger)}%` }}></div></div>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] w-3 text-center">💧</span>
+                <div className="w-36 h-3 bg-[#222] border border-black p-[1px]"><div className="h-full bg-[#3498DB]" style={{ width: `${Math.max(0, thirst)}%` }}></div></div>
+              </div>
               <div className="flex items-center gap-1 mt-1">
-                <span className="text-[10px] text-white">🪵</span>
+                <span className="text-[10px] w-3 text-center">🪵</span>
                 <div className="w-32 h-3 bg-[#222] border border-black p-[1px]"><div className={`h-full ${raftHealth > 60 ? 'bg-[#8B4513]' : raftHealth > 30 ? 'bg-[#D68910]' : 'bg-[#E74C3C]'}`} style={{ width: `${Math.max(0, Math.min(100, raftHealth))}%` }}></div></div>
               </div>
             </div>

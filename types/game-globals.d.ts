@@ -26,6 +26,12 @@ declare global {
     __barrelWater?: number;
     __wasRaining?: boolean;
     __chestMessage?: ChestMessage | null;
+    /** RAFT-502: contextual one-shot hint shown near the top of the HUD. */
+    __hint?: ChestMessage | null;
+    /** RAFT-505: nearest active threat, used for the HUD enemy warning. */
+    __threat?: 'shark' | 'frog' | null;
+    /** RAFT-504: virtual joystick feeds movement into the game's key state. */
+    __setMove?: (dir: 'left' | 'right' | 'up' | 'down', pressed: boolean) => void;
     /** Debug overlay: draws attack arcs / enemy hitboxes when true (RAFT-102). */
     __debugHitboxes?: boolean;
 

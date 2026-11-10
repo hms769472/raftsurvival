@@ -1,13 +1,15 @@
-﻿'use client';
+'use client';
 import React from 'react';
 
 interface PauseMenuProps {
   onResume: () => void;
+  onSave: () => void;
+  onLoad: () => void;
   onSettings: () => void;
   onQuit: () => void;
 }
 
-export default function PauseMenu({ onResume, onSettings, onQuit }: PauseMenuProps) {
+export default function PauseMenu({ onResume, onSave, onLoad, onSettings, onQuit }: PauseMenuProps) {
   return (
     <div className="absolute inset-0 bg-black/75 flex items-center justify-center z-[65] pointer-events-auto">
       <div className="bg-[#E6A15E] border-4 border-[#8B4513] p-6 rounded-lg w-[20rem] shadow-2xl">
@@ -17,6 +19,12 @@ export default function PauseMenu({ onResume, onSettings, onQuit }: PauseMenuPro
         <div className="flex flex-col gap-3">
           <button onClick={onResume} className="bg-[#27AE60] text-white p-3 border-2 border-[#1E8449] hover:bg-[#1E8449] transition-colors text-[10px]" style={{ fontFamily: '"Press Start 2P", monospace' }}>
             ▶️ RESUME
+          </button>
+          <button onClick={onSave} className="bg-[#16A085] text-white p-3 border-2 border-[#117A65] hover:bg-[#117A65] transition-colors text-[10px]" style={{ fontFamily: '"Press Start 2P", monospace' }}>
+            💾 SAVE GAME
+          </button>
+          <button onClick={onLoad} className="bg-[#8E44AD] text-white p-3 border-2 border-[#6C3483] hover:bg-[#6C3483] transition-colors text-[10px]" style={{ fontFamily: '"Press Start 2P", monospace' }}>
+            📁 LOAD GAME
           </button>
           <button onClick={onSettings} className="bg-[#3498DB] text-white p-3 border-2 border-[#2980B9] hover:bg-[#2980B9] transition-colors text-[10px]" style={{ fontFamily: '"Press Start 2P", monospace' }}>
             ⚙️ SETTINGS

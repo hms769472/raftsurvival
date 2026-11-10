@@ -81,6 +81,7 @@ import {
   type MaterialTier,
 } from '@/lib/balance';
 import { applyHeal, applyDamage, inAttackArc, threatScale, isEnemyUnlocked, rollLoot, rollTable } from '@/lib/systems/combat';
+import { matchAction, loadBindings } from '@/lib/controls';
 import {
   EMPTY_GRID,
   findTile,
@@ -710,6 +711,68 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
 
     const player = { x: 380, y: RAFT_CENTER_Y + 20 + 300, width: 40, height: 80 };
     const keys = { ArrowLeft: false, ArrowRight: false, ArrowUp: false, ArrowDown: false, F: false, Space: false, H: false };
+
+    // RAFT-503: player-rebindable controls (re-read live when Settings changes them).
+    const bindingsRef = { current: loadBindings() };
+    const onBindingsChanged = () => { bindingsRef.current = loadBindings(); };
+    window.addEventListener('bindingsChanged', onBindingsChanged);
+
+    // RAFT-502: contextual hints — each fires at most once per run.
+    const hintsShown = new Set<string>();
+    const showHint = (id: string, text: string, duration = 300) => {
+      if (hintsShown.has(id)) return;
+      hintsShown.add(id);
+      window.__hint = { text, time: duration };
+    };
+
+    // RAFT-504: the on-screen virtual joystick writes into the same key state
+    // the keyboard uses, so movement logic stays in one place.
+    window.__setMove = (dir, pressed) => {
+      if (dir === 'left') keys.ArrowLeft = pressed;
+      else if (dir === 'right') keys.ArrowRight = pressed;
+      else if (dir === 'up') keys.ArrowUp = pressed;
+      else if (dir === 'down') keys.ArrowDown = pressed;
+    };
+
+    // RAFT-504: gamepad support — left stick / D-pad move, face buttons attack
+    // (A), hook (B) and fish (X). Only writes to `keys` while the pad is active
+    // so it never cancels a keyboard-held direction.
+    const GP_DEADZONE = 0.3;
+    let padWasActive = false;
+    const pollGamepad = () => {
+      if (typeof navigator === 'undefined' || !navigator.getGamepads) return;
+      let active = false;
+      for (const pad of navigator.getGamepads()) {
+        if (!pad) continue;
+        const ax = pad.axes[0] ?? 0;
+        const ay = pad.axes[1] ?? 0;
+        const left = ax < -GP_DEADZONE || !!pad.buttons[14]?.pressed;
+        const right = ax > GP_DEADZONE || !!pad.buttons[15]?.pressed;
+        const up = ay < -GP_DEADZONE || !!pad.buttons[12]?.pressed;
+        const down = ay > GP_DEADZONE || !!pad.buttons[13]?.pressed;
+        const attack = !!pad.buttons[0]?.pressed;
+        const hook = !!pad.buttons[1]?.pressed;
+        const fish = !!pad.buttons[2]?.pressed;
+        if (left || right || up || down || attack || hook || fish) {
+          active = true;
+          keys.ArrowLeft = left;
+          keys.ArrowRight = right;
+          keys.ArrowUp = up;
+          keys.ArrowDown = down;
+          if (attack) keys.Space = true;
+          if (hook) keys.H = true;
+          if (fish) keys.F = true;
+        }
+        break;
+      }
+      if (padWasActive && !active) {
+        keys.ArrowLeft = keys.ArrowRight = keys.ArrowUp = keys.ArrowDown = false;
+        keys.Space = false;
+        keys.H = false;
+        keys.F = false;
+      }
+      padWasActive = active;
+    };
     
     const frogs: Frog[] = [];
     const projectiles: Projectile[] = [];
@@ -747,16 +810,18 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     const BUILD_ORDER: StructureKind[] = ['wall', 'floor', 'roof', 'crate', 'dryingrack', 'purifier'];
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft') keys.ArrowLeft = true;
-      if (e.key === 'ArrowRight') keys.ArrowRight = true;
-      if (e.key === 'ArrowUp') keys.ArrowUp = true;
-      if (e.key === 'ArrowDown') keys.ArrowDown = true;
-      if (e.key.toLowerCase() === 'f') keys.F = true;
-      if (e.key === ' ') keys.Space = true;
-      if (e.key.toLowerCase() === 'h') keys.H = true;
+      // RAFT-503: resolve the press against the player's bindings (+ WASD aliases).
+      const action = matchAction(bindingsRef.current, e.key);
+      if (action === 'left') keys.ArrowLeft = true;
+      if (action === 'right') keys.ArrowRight = true;
+      if (action === 'up') keys.ArrowUp = true;
+      if (action === 'down') keys.ArrowDown = true;
+      if (action === 'fish') keys.F = true;
+      if (action === 'attack') keys.Space = true;
+      if (action === 'hook') keys.H = true;
       if (e.key === 'F3') { e.preventDefault(); window.__debugHitboxes = !window.__debugHitboxes; } // RAFT-102 debug overlay
       // RAFT-201/202: Build Mode toggle + structure selection.
-      if (e.key.toLowerCase() === 'b') {
+      if (action === 'build') {
         const mustHaveHammer = typeof window !== 'undefined' ? window.__hasHammerRef : false;
         if (mustHaveHammer) buildModeRef.current.active = !buildModeRef.current.active;
       }
@@ -774,13 +839,14 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
       }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft') keys.ArrowLeft = false;
-      if (e.key === 'ArrowRight') keys.ArrowRight = false;
-      if (e.key === 'ArrowUp') keys.ArrowUp = false;
-      if (e.key === 'ArrowDown') keys.ArrowDown = false;
-      if (e.key.toLowerCase() === 'f') keys.F = false;
-      if (e.key === ' ') keys.Space = false;
-      if (e.key.toLowerCase() === 'h') keys.H = false;
+      const action = matchAction(bindingsRef.current, e.key);
+      if (action === 'left') keys.ArrowLeft = false;
+      if (action === 'right') keys.ArrowRight = false;
+      if (action === 'up') keys.ArrowUp = false;
+      if (action === 'down') keys.ArrowDown = false;
+      if (action === 'fish') keys.F = false;
+      if (action === 'attack') keys.Space = false;
+      if (action === 'hook') keys.H = false;
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -1904,6 +1970,18 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
 
         if (hitLanded) playHitSound(); // RAFT-108
       }
+
+      // RAFT-502: contextual hints — computed each frame, de-duped by id.
+      if (window.__hint && window.__hint.time > 0) window.__hint.time--;
+      // RAFT-505: mirror the nearest threat so the HUD can show a warning.
+      window.__threat = shark ? 'shark' : frogs.length > 0 ? 'frog' : null;
+      if (shark && window.__hasSpearRef) showHint('attackShark', 'A shark is here — press ATTACK (SPACE)!');
+      else if (frogs.length > 0 && window.__hasSpearRef) showHint('attackFrog', 'Frogs incoming — press ATTACK (SPACE)!');
+      else if (statsRef.current.hunger < 30 && (statsRef.current.fish + cookedFish + driedFish) > 0) showHint('eat', 'You are hungry — tap the 🐟 button to eat.');
+      else if (statsRef.current.thirst < 30) showHint('drink', 'You are thirsty — drink water (☔ barrel in the rain).');
+      else if (items.length > 0 && window.__hasHammerRef) showHint('hook', 'Press HOOK (H) to reel in floating debris.');
+      else if (fishes.length > 0 && window.__hasRodRef) showHint('fish', 'Fish are near — press FISH (F) to cast your line.');
+      else if (!window.__hasSpearRef && statsRef.current.wood >= 3) showHint('craftSpear', 'Craft a Spear (C) so you can defend yourself.');
 
       // RAFT-104: sharks only appear from Day 4 and spawn faster as days pass.
       if (!shark && isEnemyUnlocked('shark', day) && time > SHARK_SPAWN_AFTER_FRAMES && Math.random() < SHARK_SPAWN_CHANCE * scale.spawnMult / DIFF.enemySpawnMult) { spawnShark(); }
@@ -4146,12 +4224,14 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       }
     };
 
-    const gameLoop = () => { update(); draw(); animationFrameId = requestAnimationFrame(gameLoop); };
+    const gameLoop = () => { pollGamepad(); update(); draw(); animationFrameId = requestAnimationFrame(gameLoop); };
     gameLoop();
     return () => {
       cancelAnimationFrame(animationFrameId);
+      delete window.__setMove;
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('bindingsChanged', onBindingsChanged);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('contextmenu', handleContextMenu);

@@ -10,10 +10,13 @@ interface MainMenuProps {
   onCoop: () => void;
   onAchievements: () => void;
   onSkins: () => void;
+  onLeaderboard: () => void;
   hasSave: boolean;
+  /** RAFT-506: Co-op stays hidden until networking exists. */
+  showCoop?: boolean;
 }
 
-export default function MainMenu({ onPlay, onLoad, onSettings, onCredits, onCoop, onAchievements, onSkins, hasSave }: MainMenuProps) {
+export default function MainMenu({ onPlay, onLoad, onSettings, onCredits, onCoop, onAchievements, onSkins, onLeaderboard, hasSave, showCoop = false }: MainMenuProps) {
   return (
     <div className="flex flex-col items-center justify-between h-screen bg-[#2D8FBD] relative overflow-hidden py-6">
       <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-blue-200 via-transparent to-transparent"></div>
@@ -40,7 +43,10 @@ export default function MainMenu({ onPlay, onLoad, onSettings, onCredits, onCoop
         {hasSave && (
           <button onClick={onLoad} className="hover:text-white transition-colors drop-shadow-[0_2px_0_rgba(255,255,255,0.5)]">LOAD GAME</button>
         )}
-        <button onClick={onCoop} className="hover:text-white transition-colors drop-shadow-[0_2px_0_rgba(255,255,255,0.5)]">CO-OP</button>
+        {showCoop && (
+          <button onClick={onCoop} className="hover:text-white transition-colors drop-shadow-[0_2px_0_rgba(255,255,255,0.5)]">CO-OP</button>
+        )}
+        <button onClick={onLeaderboard} className="hover:text-white transition-colors drop-shadow-[0_2px_0_rgba(255,255,255,0.5)]">LEADERBOARD</button>
         <button onClick={onSettings} className="hover:text-white transition-colors drop-shadow-[0_2px_0_rgba(255,255,255,0.5)]">SETTINGS</button>
         <button onClick={onAchievements} className="hover:text-white transition-colors drop-shadow-[0_2px_0_rgba(255,255,255,0.5)]">ACHIEVEMENTS</button>
         <button onClick={onSkins} className="hover:text-white transition-colors drop-shadow-[0_2px_0_rgba(255,255,255,0.5)]">SKINS</button>

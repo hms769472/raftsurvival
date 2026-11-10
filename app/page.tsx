@@ -17,8 +17,15 @@ import Victory from '@/components/Victory';
 import SkinShop from '@/components/SkinShop';
 import BackgroundMusic from '@/components/BackgroundMusic';
 import DevTuningPanel from '@/components/DevTuningPanel';
+import Tutorial from '@/components/Tutorial';
+import PauseMenu from '@/components/PauseMenu';
+import SaveSlots from '@/components/SaveSlots';
+import Leaderboard from '@/components/Leaderboard';
+import HintToast from '@/components/HintToast';
+import TouchControls from '@/components/TouchControls';
 import { loadSnapshot, saveSnapshot, hasSnapshot, type GameSnapshot, type SnapshotStore } from '@/lib/save';
 import { nextWeaponTier, BASE_RAFT_HEIGHT, EXPAND_SIZE, MAX_HEALTH, type WeaponTier } from '@/lib/balance';
+import { matchAction, loadBindings } from '@/lib/controls';
 import { DEFAULT_PROGRESSION, addXp, xpProgress, type ProgressionState } from '@/lib/systems/progression';
 import { canRankUp, perkEffects, rankUp, type PerkRanks } from '@/lib/systems/perks';
 import {
@@ -32,11 +39,17 @@ import {
 
 // RAFT-406: the live tuning panel is a developer tool — never shipped.
 const IS_DEV = process.env.NODE_ENV !== 'production';
+// RAFT-506: Co-op has no networking yet, so keep it out of the main menu.
+const COOP_ENABLED = false;
 
 export default function Home() {
-  const [scene, setScene] = useState<'menu' | 'playing' | 'settings' | 'credits' | 'coop' | 'achievements' | 'skins'>('menu');
+  const [scene, setScene] = useState<'menu' | 'playing' | 'settings' | 'credits' | 'coop' | 'achievements' | 'skins' | 'leaderboard'>('menu');
   const [gameId, setGameId] = useState(0);
   const [showDevPanel, setShowDevPanel] = useState(false);
+  // RAFT-501: first-run tutorial overlay.
+  const [showTutorial, setShowTutorial] = useState(false);
+  // RAFT-507: in-game save-slot picker ('save' | 'load' | null).
+  const [saveSlotsMode, setSaveSlotsMode] = useState<'save' | 'load' | null>(null);
   const [health, setHealth] = useState(5);
   const [hunger, setHunger] = useState(100);
   const [thirst, setThirst] = useState(100);
@@ -64,6 +77,8 @@ export default function Home() {
   const [playerState, setPlayerState] = useState<'standing' | 'sitting' | 'laying'>('standing');
   const [gameScale, setGameScale] = useState(1);
   const [barrelWater, setBarrelWater] = useState(0);
+  // RAFT-505: nearest active threat (mirrored from <Game>) for the HUD warning.
+  const [threat, setThreat] = useState<'shark' | 'frog' | null>(null);
   const [spearTier, setSpearTier] = useState<WeaponTier>('wooden');
   // RAFT-301/302/304: progression, perks and objectives owned by the page.
   const [progression, setProgression] = useState<ProgressionState>(DEFAULT_PROGRESSION);
@@ -195,11 +210,12 @@ export default function Home() {
     return () => window.removeEventListener('resize', updateScale);
   }, []);
 
-  // Poll barrel water from game (Game exposes it via window.__barrelWater)
+  // Poll barrel water + threat from game (Game exposes them via window.__*).
   useEffect(() => {
     const interval = setInterval(() => {
       const w = window.__barrelWater;
       if (typeof w === 'number') setBarrelWater(w);
+      setThreat(window.__threat ?? null);
     }, 200);
     return () => clearInterval(interval);
   }, []);
@@ -241,11 +257,19 @@ export default function Home() {
         setShowDevPanel((prev) => !prev);
         return;
       }
-      if (scene !== 'playing' || gameOver || showPause || isPerkOpen) return;
-      if (e.key.toLowerCase() === 'c') setIsCraftingOpen(prev => !prev);
+      if (scene !== 'playing' || gameOver || isPerkOpen) return;
+      // RAFT-507: P / Escape toggles the pause menu.
+      if (e.key.toLowerCase() === 'p' || e.key === 'Escape') {
+        e.preventDefault();
+        setShowPause(prev => !prev);
+        return;
+      }
+      if (showPause) return;
+      // RAFT-503: crafting hotkey follows the player's binding.
+      const action = matchAction(loadBindings(), e.key);
+      if (action === 'craft') setIsCraftingOpen(prev => !prev);
       if (e.key.toLowerCase() === 'r') setIsRecipeBookOpen(prev => !prev);
-      if (e.key.toLowerCase() === 's') setPlayerState(prev => prev === 'sitting' ? 'standing' : 'sitting');
-      if (e.key.toLowerCase() === 'l') setPlayerState(prev => prev === 'laying' ? 'standing' : 'laying');
+      // NOTE: sit/lay are HUD buttons now — WASD owns S/W/A/D for movement.
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -343,6 +367,12 @@ export default function Home() {
     }, 100);
   };
 
+  // RAFT-504: touch "FISH" button mirrors the F key.
+  const handleFish = () => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f' }));
+    setTimeout(() => window.dispatchEvent(new KeyboardEvent('keyup', { key: 'f' })), 100);
+  };
+
   const handleGameOver = useCallback(() => {
     try {
       const stats = JSON.parse(localStorage.getItem('raftAchStats') || '{}');
@@ -351,9 +381,23 @@ export default function Home() {
         const current = parseInt(localStorage.getItem('raftCoins') || '0');
         localStorage.setItem('raftCoins', String(current + earned));
       }
+      // RAFT-507: record a local leaderboard entry for this run.
+      const diff = (localStorage.getItem('raftSettings') ? JSON.parse(localStorage.getItem('raftSettings')!)?.difficulty : 'normal') || 'normal';
+      const entry = {
+        days: day,
+        fishEaten: Math.floor(stats.totalFishEaten || 0),
+        sharksDefeated: Math.floor(stats.sharksDefeated || 0),
+        date: new Date().toLocaleDateString(),
+        difficulty: String(diff),
+      };
+      const board = JSON.parse(localStorage.getItem('raftLeaderboard') || '[]');
+      const list = Array.isArray(board) ? board : [];
+      list.push(entry);
+      list.sort((a: { days: number }, b: { days: number }) => b.days - a.days);
+      localStorage.setItem('raftLeaderboard', JSON.stringify(list.slice(0, 10)));
     } catch (e) {}
     setGameOver(true); // COINS REWARD v2
-  }, []);
+  }, [day]);
 
   // RAFT-301/302/304/306: reset page-owned meta state for a fresh run. New Game+
   // keeps earned perk ranks (and coins) as a prestige bonus.
@@ -436,9 +480,9 @@ export default function Home() {
     setScene('menu');
   }, []);
 
-  // RAFT-006: restore the exact run from the persisted snapshot.
-  const handleLoadGame = useCallback(() => {
-    const data = loadSnapshot();
+  // RAFT-006/507: restore the exact run from a persisted slot.
+  const loadFromSlot = useCallback((slot: number) => {
+    const data = loadSnapshot(slot);
     if (!data) return;
     // Hydrate React HUD state so the first paint already matches the save.
     setInitialState(data);
@@ -482,6 +526,22 @@ export default function Home() {
     setScene('playing');
   }, []);
 
+  // RAFT-507: open the save-slot picker ('save' from the pause menu, 'load' from the main menu).
+  const handleOpenSaveSlots = useCallback((mode: 'save' | 'load') => {
+    setShowPause(false);
+    setSaveSlotsMode(mode);
+  }, []);
+
+  // RAFT-507: write the live snapshot into the chosen slot.
+  const handleSelectSaveSlot = useCallback((slot: number) => {
+    const snap = snapshotStore.current ?? initialState;
+    if (snap) {
+      saveSnapshot(snap, slot);
+      setHasSave(true);
+    }
+    setSaveSlotsMode(null);
+  }, [snapshotStore, initialState]);
+
   // RAFT-007: fresh run — clear any loaded snapshot so <Game> boots from defaults.
   const handlePlay = useCallback(() => {
     setInitialState(null);
@@ -490,8 +550,18 @@ export default function Home() {
     setIsPerkOpen(false);
     setPlayerState('standing');
     resetProgression(false);
+    // RAFT-501: show the tutorial the first time the game is played.
+    try {
+      if (!localStorage.getItem('raftTutorialSeen')) setShowTutorial(true);
+    } catch {}
     setScene('playing');
   }, [resetProgression]);
+
+  // RAFT-501: replay the tutorial from Settings.
+  const handleReplayTutorial = useCallback(() => {
+    try { localStorage.removeItem('raftTutorialSeen'); } catch {}
+    setShowTutorial(true);
+  }, []);
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-black relative overflow-hidden">
@@ -499,22 +569,26 @@ export default function Home() {
         <AchievementsPanel onClose={() => setScene('menu')} />
       ) : scene === 'coop' ? (
         <CoopMenu onClose={() => setScene('menu')} />
+      ) : scene === 'leaderboard' ? (
+        <Leaderboard onClose={() => setScene('menu')} />
       ) : scene === 'credits' ? (
         <CreditsScreen onClose={() => setScene('menu')} />
       ) : scene === 'settings' ? (
-        <SettingsMenu onClose={() => setScene('menu')} />
+        <SettingsMenu onClose={() => setScene('menu')} onReplayTutorial={handleReplayTutorial} />
       ) : scene === 'skins' ? (
         <SkinShop onClose={() => setScene('menu')} />
       ) : scene === 'menu' ? (
         <MainMenu
           onPlay={handlePlay}
-          onLoad={handleLoadGame}
+          onLoad={() => handleOpenSaveSlots('load')}
           onSettings={() => setScene('settings')}
           onCredits={() => setScene('credits')}
           onCoop={() => setScene('coop')}
           onAchievements={() => setScene('achievements')}
           onSkins={() => setScene('skins')}
+          onLeaderboard={() => setScene('leaderboard')}
           hasSave={hasSave}
+          showCoop={COOP_ENABLED}
         />
       ) : (
         <div
@@ -590,6 +664,7 @@ export default function Home() {
             playerState={playerState}
             onPoseChange={setPlayerState}
             onMainMenu={() => { setScene('menu'); setIsCraftingOpen(false); setIsRecipeBookOpen(false); setIsPerkOpen(false); }}
+            threat={threat}
           />
           {isRecipeBookOpen && (
             <RecipeBook onClose={() => setIsRecipeBookOpen(false)} />
@@ -635,39 +710,34 @@ export default function Home() {
               onMainMenu={() => { setVictory(false); setScene('menu'); }}
             />
           )}
-          {showPause && !gameOver && (
-            <div className="absolute inset-0 z-[80] flex items-center justify-center bg-black/70">
-              <div className="bg-[#FFF8DC] border-4 border-[#DAA520] rounded-lg p-6 flex flex-col items-center gap-4 min-w-[320px] shadow-2xl">
-                <h2
-                  className="text-[14px] text-[#8B4513] tracking-widest"
-                  style={{ fontFamily: '"Press Start 2P", monospace' }}
-                >
-                  PAUSED
-                </h2>
-                <button
-                  onClick={handleSaveAndQuit}
-                  className="w-full bg-[#8B4513] hover:bg-[#5D4037] text-white px-4 py-2 rounded text-[10px]"
-                  style={{ fontFamily: '"Press Start 2P", monospace' }}
-                >
-                  SAVE &amp; QUIT
-                </button>
-                <button
-                  onClick={handleQuit}
-                  className="w-full bg-[#8B4513] hover:bg-[#5D4037] text-white px-4 py-2 rounded text-[10px]"
-                  style={{ fontFamily: '"Press Start 2P", monospace' }}
-                >
-                  QUIT
-                </button>
-                <button
-                  onClick={() => setShowPause(false)}
-                  className="w-full bg-[#DAA520] hover:bg-[#B8860B] text-black px-4 py-2 rounded text-[10px]"
-                  style={{ fontFamily: '"Press Start 2P", monospace' }}
-                >
-                  CANCEL
-                </button>
-              </div>
-            </div>
+          {showPause && !gameOver && !saveSlotsMode && (
+            <PauseMenu
+              onResume={() => setShowPause(false)}
+              onSave={() => handleOpenSaveSlots('save')}
+              onLoad={() => handleOpenSaveSlots('load')}
+              onSettings={() => { setShowPause(false); setScene('settings'); }}
+              onQuit={handleQuit}
+            />
           )}
+          {/* RAFT-507: multiple save slots (in-game save/load or from the main menu). */}
+          {saveSlotsMode && (
+            <SaveSlots
+              mode={saveSlotsMode}
+              onClose={() => setSaveSlotsMode(null)}
+              onSelect={saveSlotsMode === 'save' ? handleSelectSaveSlot : loadFromSlot}
+            />
+          )}
+          {/* RAFT-501: first-run / replay tutorial overlay. */}
+          {showTutorial && <Tutorial onDismiss={() => setShowTutorial(false)} />}
+          {/* RAFT-502: contextual hints + world messages. */}
+          <HintToast />
+          {/* RAFT-504: on-screen controls for touch devices. */}
+          <TouchControls
+            onAttack={handleAttack}
+            onFish={handleFish}
+            onHook={handleHook}
+            onCraft={() => setIsCraftingOpen(prev => !prev)}
+          />
           <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-12">
             <BackgroundMusic />
           </div>
@@ -675,7 +745,7 @@ export default function Home() {
             onClick={() => { setIsCraftingOpen(false); setShowPause(true); }}
             className="absolute top-2 left-1/2 transform -translate-x-1/2 z-50 pointer-events-auto bg-black/80 hover:bg-black text-white px-4 py-2 rounded text-[12px] border-2 border-yellow-500 cursor-pointer"
           >
-            [ESC] Pause
+            [P] Pause
           </button>
         </div>
       )}

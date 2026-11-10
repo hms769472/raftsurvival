@@ -78,13 +78,13 @@ Legend: `Todo` · `In progress` · `Done` · `Partial` · `Skipped`
 
 | Key | Title | Status |
 |---|---|---|
-| RAFT-501 | Mount `Tutorial` on first run; replay in settings | Todo |
-| RAFT-502 | Contextual hints | Todo |
-| RAFT-503 | Control scheme: WASD + arrows; rebindable keys | Todo |
-| RAFT-504 | Touch controls & gamepad support | Todo |
-| RAFT-505 | HUD overhaul (icons, cooked-fish counter, XP, warnings) | Todo |
-| RAFT-506 | Remove/hide Co-op menu until networking exists | Todo |
-| RAFT-507 | Real Pause menu, multiple save slots, Leaderboard | Todo |
+| RAFT-501 | Mount `Tutorial` on first run; replay in settings | Done |
+| RAFT-502 | Contextual hints | Done |
+| RAFT-503 | Control scheme: WASD + arrows; rebindable keys | Done |
+| RAFT-504 | Touch controls & gamepad support | Done |
+| RAFT-505 | HUD overhaul (icons, cooked-fish counter, XP, warnings) | Done |
+| RAFT-506 | Remove/hide Co-op menu until networking exists | Done |
+| RAFT-507 | Real Pause menu, multiple save slots, Leaderboard | Done |
 
 ## Phase 6 — Tech Debt, Performance & QA (RAFT-E6)
 

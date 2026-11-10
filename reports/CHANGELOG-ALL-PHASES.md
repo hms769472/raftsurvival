@@ -139,3 +139,33 @@ Branch: `feature/raft-v0.2` · Start tag: `phase-start`
 
 ---
 
+## Phase 5 — Onboarding, UX & Controls (RAFT-E5) — tag `phase-5`
+
+**Commit:** _(this commit)_
+
+**Added**
+- `lib/controls.ts` — central rebindable bindings: `ControlAction`, `CONTROL_ACTIONS`, `DEFAULT_BINDINGS`, `BINDING_LABELS`, `MOVE_ALIASES`, `normKey`, `keyLabel`, `loadBindings`, `saveBindings`, `matchAction`
+- `components/HintToast.tsx` — renders `window.__hint` (contextual tips) + `window.__chestMessage` (world events)
+- `components/TouchControls.tsx` — mobile virtual joystick + action buttons, wired through `window.__setMove`
+
+**Modified**
+- `components/Game.tsx` — `bindingsRef` + `bindingsChanged` listener; `handleKeyDown`/`handleKeyUp` via `matchAction`; `showHint` + per-frame hint triggers; `window.__setMove` bridge; `pollGamepad()` (stick/D-pad + A/B/X) in `gameLoop`; `window.__threat` mirror
+- `components/SettingsMenu.tsx` — CONTROLS rebind section + RESET; 🎓 REPLAY TUTORIAL button
+- `components/HUD.tsx` — bar icons/labels (🍖/💧/🪵) + flashing enemy-warning banner (`threat` prop)
+- `components/PauseMenu.tsx` — SAVE GAME + LOAD GAME buttons
+- `components/SaveSlots.tsx` — slot-aware keys (`slotKey`) + `deleteSnapshot`
+- `components/MainMenu.tsx` — LEADERBOARD button; CO-OP gated behind `showCoop`
+- `lib/save.ts` — `SAVE_SLOT_COUNT`, `slotKey()`, slot-aware load/save/has, `deleteSnapshot`, `hasAnySnapshot`
+- `app/page.tsx` — mount `Tutorial`/`PauseMenu`/`SaveSlots`/`Leaderboard`/`HintToast`/`TouchControls`; `'leaderboard'` scene; `COOP_ENABLED` gate; P/Esc pause; bindings-aware craft hotkey; multi-slot save/load; first-run tutorial + replay; local leaderboard on death
+- `types/game-globals.d.ts` — typed `__hint`, `__threat`, `__setMove`
+
+**Tickets:** RAFT-501,502,503,504,505,506,507 Done
+
+**Dependencies:** none added.
+
+**Config/data:** save schema unchanged (v6); slots add `raftSave_1..3` (slot 0 = `raftSave`). New local key `raftBindings`. New bridge globals `__hint`/`__threat`/`__setMove`; new `bindingsChanged` event.
+
+**Verification:** tsc 0 errors · lint 0 errors / 32 warnings · build OK · vitest 61/61 passing
+
+---
+

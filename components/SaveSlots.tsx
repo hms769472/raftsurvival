@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { slotKey, deleteSnapshot } from '@/lib/save';
 
 interface SaveSlotsProps {
   mode: 'save' | 'load';
@@ -23,7 +24,7 @@ function loadSlots(): SaveSlot[] {
   const list: SaveSlot[] = [];
   for (let i = 1; i <= 3; i++) {
     if (typeof window === 'undefined') { list.push(EMPTY_SLOT(i)); continue; }
-    const data = localStorage.getItem('raftSave_' + i);
+    const data = localStorage.getItem(slotKey(i));
     if (data) {
       try {
         const d = JSON.parse(data);
@@ -41,7 +42,7 @@ export default function SaveSlots({ mode, onClose, onSelect }: SaveSlotsProps) {
 
   const handleDelete = (slot: number) => {
     if (confirm('Delete this save?')) {
-      localStorage.removeItem('raftSave_' + slot);
+      deleteSnapshot(slot);
       setSlots(prev => prev.map(s => s.slot === slot ? EMPTY_SLOT(slot) : s));
     }
   };

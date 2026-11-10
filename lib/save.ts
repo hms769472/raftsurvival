@@ -13,6 +13,12 @@ import { normalizePerkRanks, type PerkRanks } from '@/lib/systems/perks';
 
 export const SAVE_VERSION = 6;
 export const SAVE_KEY = 'raftSave';
+/** RAFT-507: number of player-visible save slots (slot 0 = legacy autosave key). */
+export const SAVE_SLOT_COUNT = 3;
+/** Storage key for a slot. Slot 0 keeps the original `raftSave` key. */
+export function slotKey(slot: number): string {
+  return slot === 0 ? SAVE_KEY : `${SAVE_KEY}_${slot}`;
+}
 
 export type GameSnapshot = {
   version: number;
@@ -129,10 +135,10 @@ export function normalizeSnapshot(raw: unknown): GameSnapshot {
   };
 }
 
-export function loadSnapshot(): GameSnapshot | null {
+export function loadSnapshot(slot = 0): GameSnapshot | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
+    const raw = localStorage.getItem(slotKey(slot));
     if (!raw) return null;
     return normalizeSnapshot(JSON.parse(raw));
   } catch {
@@ -140,20 +146,36 @@ export function loadSnapshot(): GameSnapshot | null {
   }
 }
 
-export function saveSnapshot(snap: GameSnapshot): void {
+export function saveSnapshot(snap: GameSnapshot, slot = 0): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ ...snap, version: SAVE_VERSION, savedAt: Date.now() }));
+    localStorage.setItem(slotKey(slot), JSON.stringify({ ...snap, version: SAVE_VERSION, savedAt: Date.now() }));
   } catch {
     /* storage full / disabled — never crash the game */
   }
 }
 
-export function hasSnapshot(): boolean {
+export function hasSnapshot(slot = 0): boolean {
   if (typeof window === 'undefined') return false;
   try {
-    return localStorage.getItem(SAVE_KEY) !== null;
+    return localStorage.getItem(slotKey(slot)) !== null;
   } catch {
     return false;
   }
+}
+
+/** RAFT-507: remove a slot's save (used by the SaveSlots delete button). */
+export function deleteSnapshot(slot = 0): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(slotKey(slot));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** RAFT-507: true if any slot (including the legacy autosave) holds a save. */
+export function hasAnySnapshot(): boolean {
+  for (let i = 0; i <= SAVE_SLOT_COUNT; i++) if (hasSnapshot(i)) return true;
+  return false;
 }
