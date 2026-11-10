@@ -40,15 +40,15 @@ Legend: `Todo` · `In progress` · `Done` · `Partial` · `Skipped`
 
 | Key | Title | Status |
 |---|---|---|
-| RAFT-201 | Grid-based raft (tiles) | Todo |
-| RAFT-202 | Build mode: ghost preview, place/rotate/remove, refund % | Todo |
-| RAFT-203 | Functional Roof: blocks weather penalties; shelter buff | Todo |
-| RAFT-204 | Functional Walls: block projectiles; shark can bite & damage them | Todo |
-| RAFT-205 | Real structure HP + Repair (fix "REPAIR RAFT") | Todo |
-| RAFT-206 | Raft sinking: raftHealth 0 ⇒ tile loss / game over | Todo |
-| RAFT-207 | Expose Expand Raft in crafting UI | Todo |
-| RAFT-208 | New buildables (storage crate, drying rack, purifier, sail, net) | Todo |
-| RAFT-209 | Resource sinks & upgrade tiers | Todo |
+| RAFT-201 | Grid-based raft (tiles) | Done |
+| RAFT-202 | Build mode: ghost preview, place/rotate/remove, refund % | Done |
+| RAFT-203 | Functional Roof: blocks weather penalties; shelter buff | Done |
+| RAFT-204 | Functional Walls: block projectiles; shark can bite & damage them | Done |
+| RAFT-205 | Real structure HP + Repair (fix "REPAIR RAFT") | Done |
+| RAFT-206 | Raft sinking: raftHealth 0 ⇒ tile loss / game over | Done |
+| RAFT-207 | Expose Expand Raft in crafting UI | Done |
+| RAFT-208 | New buildables (storage crate, drying rack, purifier, sail, net) | Partial (crate/drying rack/purifier done; sail/net deferred) |
+| RAFT-209 | Resource sinks & upgrade tiers | Done |
 
 ## Phase 3 — Progression & Goals (RAFT-E3)
 

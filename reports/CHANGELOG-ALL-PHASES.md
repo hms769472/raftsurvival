@@ -55,3 +55,29 @@ Branch: `feature/raft-v0.2` · Start tag: `phase-start`
 
 ---
 
+## Phase 2 — Construction & Base Building (RAFT-E2) — tag `phase-2`
+
+**Commit:** `d73e854`
+
+**Added**
+- `lib/systems/raft.ts` — pure tile-grid model: `BuildGrid`, `BuildTile`, `canPlace`, `placeTile`, `removeTile`, `damageTile`, `damageFirstOfKind`, `repairAllTiles`, `tileIntegrity`, `hasShelter`, `upgradeTile`, `toStored`, `fromStored`, `migrateFlatBuild`
+- `lib/systems/raft.test.ts` — 16 Vitest unit tests (placement, edge rule, refund, damage/destroy, repair clamp, shelter, upgrade, serialization round-trip, garbage tolerance, flat→grid migration)
+
+**Modified**
+- `lib/balance.ts` — Phase 2 block: structure kinds/materials, costs/HP/refund, material HP multipliers + upgrade costs, roof regen, crate/drying-rack/purifier constants, sink sequence, expand/repair costs, weather drain multipliers, `MAX_RAFT_HEALTH`
+- `components/Game.tsx` — tile-grid hydration + `migrateFlatBuild` fallback; Build Mode (B / 1-6 / R / T) with ghost preview, canvas-scoped mouse; tile rendering; `statsPayload`; REPAIR/EXPAND craft handling; weather shelter + roof regen; shark→wall grid damage; sink sequence; crate/drying-rack/purifier effects + storage cap; material upgrades; `buildGrid` persisted; listener cleanup
+- `components/CraftingMenu.tsx` — REPAIR (disabled at 100%, visible cost), EXPAND (size-scaled), removed flat BUILD buttons → build-mode info block, capacity header
+- `app/page.tsx` — `storageCap` + `needsRepair` state, game owns deck/grid for REPAIR/EXPAND, new props
+- `components/HUD.tsx` — `storageCap` prop in resource readout
+- `lib/save.ts` — `SAVE_VERSION 4`, `buildGrid` field + normalization
+
+**Tickets:** RAFT-205,207,201,202,203,204,206,209,208 Done · save migration Done
+
+**Dependencies:** none added.
+
+**Config/data:** save schema v3 → v4 (`buildGrid`; old flat saves migrate via `migrateFlatBuild`).
+
+**Verification:** tsc 0 errors · lint 0 errors / 37 warnings · build OK · vitest 33/33 passing
+
+---
+
