@@ -47,12 +47,21 @@ import {
   WEATHER_HEAT_THIRST,
   WEATHER_SNOW_HUNGER,
   WEATHER_RAIN_DRAIN,
+  MAX_HEALTH,
+  XP_REWARDS,
+  WIN_DAY,
+  STORM_RAFT_DAMAGE,
+  ISLAND_SPAWN_PERIOD,
+  CHEST_SPAWN_PERIOD,
+  ISLAND_LOOT,
+  CHEST_LOOT,
   type WeaponTier,
   type LootType,
+  type LootDrop,
   type StructureKind,
   type MaterialTier,
 } from '@/lib/balance';
-import { applyHeal, applyDamage, inAttackArc, threatScale, isEnemyUnlocked, rollLoot } from '@/lib/systems/combat';
+import { applyHeal, applyDamage, inAttackArc, threatScale, isEnemyUnlocked, rollLoot, rollTable } from '@/lib/systems/combat';
 import {
   EMPTY_GRID,
   findTile,
@@ -78,12 +87,23 @@ import {
   type AchDifficulty,
 } from '@/lib/systems/achievements';
 import type { AchievementStats } from '@/lib/achievements';
+import { NEUTRAL_EFFECTS, type PerkEffects, type PerkRanks } from '@/lib/systems/perks';
+import { DEFAULT_PROGRESSION, type ProgressionState } from '@/lib/systems/progression';
 import type { SkinDefinition } from '@/types/game-globals';
 import type { GameSnapshot, SnapshotStore } from '@/lib/save';
 import { SAVE_VERSION } from '@/lib/save';
 
+type GameStats = {
+  health: number; hunger: number; thirst: number; fish: number; day: number; wood: number; plastic: number; raftHealth: number;
+  walls?: number; roofs?: number; floors?: number; raftSize?: number; capacity?: number; damaged?: boolean;
+  /** RAFT-301/304/305: extra counters the progression + objective systems read. */
+  cookedFish?: number; kills?: number; islands?: number; structures?: number; crafted?: number;
+  /** RAFT-304: cumulative gathering counters for the objective chain. */
+  woodGathered?: number; fishCaught?: number;
+};
+
 type GameProps = {
-  onStatsUpdate: (stats: { health: number; hunger: number; thirst: number; fish: number; day: number; wood: number; plastic: number; raftHealth: number; walls?: number; roofs?: number; floors?: number; raftSize?: number; capacity?: number; damaged?: boolean }) => void;
+  onStatsUpdate: (stats: GameStats) => void;
   craftAction: { type: string; id: number } | null;
   onCraftComplete: () => void;
   raftWidth: number;
@@ -97,6 +117,8 @@ type GameProps = {
   floors: number;
   gameOver: boolean;
   onGameOver: () => void;
+  /** RAFT-306: fired once when the run reaches the win condition (WIN_DAY). */
+  onVictory?: () => void;
   playerState: 'standing' | 'sitting' | 'laying';
   /** When provided, the run hydrates from this snapshot on mount (Continue). */
   initialState?: GameSnapshot | null;
@@ -106,6 +128,18 @@ type GameProps = {
   paused?: boolean;
   /** Current spear tier; drives spear damage (RAFT-106). */
   spearTier?: WeaponTier;
+  /** RAFT-302: derived perk modifiers applied to the simulation. */
+  perkEffects?: PerkEffects;
+  /** RAFT-301: XP earned during the run, reported to the page's progression. */
+  onXp?: (amount: number) => void;
+  /** RAFT-304: one-shot resource grant claimed from an objective reward. */
+  rewardAction?: { wood?: number; plastic?: number; id: number } | null;
+  /** RAFT-304: clears the reward once applied. */
+  onRewardComplete?: () => void;
+  /** RAFT-301/302/304: page-owned progression captured into the save snapshot. */
+  progression?: ProgressionState;
+  perkRanks?: PerkRanks;
+  objectiveIndex?: number;
 };
 
 type Frog = { x: number; y: number; width: number; height: number; shootTimer: number; direction: number; hopPhase: number; };
@@ -170,7 +204,7 @@ const RAFT_WIDTH = 80;
 const RAFT_CENTER_Y = 300;
 const WORLD_SCROLL_SPEED = 2.2;
 
-export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raftWidth, hasRod, hasSpear, hasHammer, hasCampfire, hasRainBarrel, walls, roofs, floors, gameOver, onGameOver, playerState, initialState, snapshotStore, paused, spearTier }: GameProps) {
+export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raftWidth, hasRod, hasSpear, hasHammer, hasCampfire, hasRainBarrel, walls, roofs, floors, gameOver, onGameOver, onVictory, playerState, initialState, snapshotStore, paused, spearTier, perkEffects, onXp: onXpProp, rewardAction, onRewardComplete, progression, perkRanks, objectiveIndex }: GameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const waveSoundRef = useRef<{ noiseSource: AudioBufferSourceNode; lfo: OscillatorNode; } | null>(null);
@@ -195,6 +229,25 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
   // it through a ref so the effect never needs to restart.
   const spearTierRef = useRef<WeaponTier>(spearTier ?? 'wooden');
   useEffect(() => { spearTierRef.current = spearTier ?? 'wooden'; }, [spearTier]);
+
+  // RAFT-302: perk modifiers can change mid-run (perk tree); read via a ref so
+  // the main effect never restarts. RAFT-306: onVictory read via a ref too.
+  const perkRef = useRef<PerkEffects>(perkEffects ?? NEUTRAL_EFFECTS);
+  useEffect(() => { perkRef.current = perkEffects ?? NEUTRAL_EFFECTS; }, [perkEffects]);
+  const onVictoryRef = useRef(onVictory);
+  useEffect(() => { onVictoryRef.current = onVictory; }, [onVictory]);
+  // RAFT-301: XP is reported through a prop so progression lives in the page.
+  const onXpGainRef = useRef(onXpProp);
+  useEffect(() => { onXpGainRef.current = onXpProp; }, [onXpProp]);
+  // RAFT-304: total tools crafted this run (survives across the craft effect).
+  const craftsMadeRef = useRef(0);
+  // RAFT-301/302/304: page-owned progression, written into the save snapshot.
+  const progressionRef = useRef<ProgressionState>(progression ?? DEFAULT_PROGRESSION);
+  useEffect(() => { progressionRef.current = progression ?? DEFAULT_PROGRESSION; }, [progression]);
+  const perkRanksRef = useRef<PerkRanks>(perkRanks ?? {});
+  useEffect(() => { perkRanksRef.current = perkRanks ?? {}; }, [perkRanks]);
+  const objectiveIndexRef = useRef(objectiveIndex ?? 0);
+  useEffect(() => { objectiveIndexRef.current = objectiveIndex ?? 0; }, [objectiveIndex]);
 
   // RAFT-201/202: the build grid is the single source of truth for placed
   // structures. Hydrated from the save — or migrated from a pre-grid save's
@@ -601,11 +654,28 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
         statsRef.current.plastic -= cost.plastic;
       }
     }
+    // RAFT-301: real crafts and spear upgrades are XP sources.
+    const CRAFT_XP_TYPES = ['ROD', 'SPEAR', 'HAMMER', 'RAIN_BARREL', 'CAMPFIRE'];
+    if (CRAFT_XP_TYPES.includes(craftAction.type)) {
+      craftsMadeRef.current += 1;
+      onXpGainRef.current?.(XP_REWARDS.craft);
+    } else if (craftAction.type === 'SPEAR_UPGRADE') {
+      onXpGainRef.current?.(XP_REWARDS.upgrade);
+    }
     // Immediately update the HUD with new resource counts
     playCraftSound(); // __craftSoundPlayed
     onStatsUpdate({ ...statsRef.current });
     onCraftComplete();
   }, [craftAction, onCraftComplete, spearTier]);
+
+  // RAFT-304: apply a one-shot objective reward (resources) then clear it.
+  useEffect(() => {
+    if (!rewardAction) return;
+    if (typeof rewardAction.wood === 'number') statsRef.current.wood += rewardAction.wood;
+    if (typeof rewardAction.plastic === 'number') statsRef.current.plastic += rewardAction.plastic;
+    onStatsUpdate({ ...statsRef.current });
+    onRewardComplete?.();
+  }, [rewardAction, onRewardComplete, onStatsUpdate]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -730,6 +800,18 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     let cookingTimer = 0;
     let barrelWater = initialState?.barrelWater ?? 0; // 0-100 — how much water is in the rain barrel
     if (typeof window !== 'undefined') window.__barrelWater = barrelWater;
+
+    // RAFT-304/305/306: monotonic run counters feeding objectives, exploration
+    // and the win condition.
+    let kills = 0;
+    let islandsFound = 0;
+    let structuresBuilt = 0;
+    let islandTimer = 0;
+    let chestTimer = 0;
+    let victoryFired = false;
+    // RAFT-304: cumulative gathering counters for the objective chain.
+    let woodGathered = 0;
+    let fishCaught = 0;
 
     // === DIFFICULTY SETTINGS ===
     const getDifficulty = (): 'easy' | 'normal' | 'hard' => {
@@ -1068,6 +1150,9 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         barrelWater,
         spearTier: spearTierRef.current,
         buildGrid: toStored(buildGridRef.current),
+        progression: progressionRef.current,
+        perkRanks: perkRanksRef.current,
+        objectiveIndex: objectiveIndexRef.current,
       };
     };
 
@@ -1120,6 +1205,14 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         walls: countKind(g, 'wall'),
         roofs: countKind(g, 'roof'),
         floors: countKind(g, 'floor'),
+        // RAFT-301/304/305: counters fed to the progression + objective systems.
+        cookedFish,
+        kills,
+        islands: islandsFound,
+        structures: structuresBuilt,
+        crafted: craftsMadeRef.current,
+        woodGathered,
+        fishCaught,
       };
     };
     const pushBuildCounts = () => {
@@ -1136,22 +1229,44 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       const material = buildModeRef.current.material;
       const action = cellAction(col, row);
       if (action === 'invalid') return;
+      // RAFT-302: Builder "Thrift" discounts every structure cost.
+      const costMult = perkRef.current.structureCostMult;
+      const scaled = (c: { wood: number; plastic: number }) => ({
+        wood: Math.ceil(c.wood * costMult),
+        plastic: Math.ceil(c.plastic * costMult),
+      });
       if (action === 'upgrade') {
         // RAFT-209: upgrade an existing structure in place (pays only the tier cost).
-        const up = MATERIAL_UPGRADE_COST[material as Exclude<MaterialTier, 'wood'>];
+        const up = scaled(MATERIAL_UPGRADE_COST[material as Exclude<MaterialTier, 'wood'>]);
         if (statsRef.current.wood < up.wood || statsRef.current.plastic < up.plastic) return;
         statsRef.current.wood -= up.wood;
         statsRef.current.plastic -= up.plastic;
         buildGridRef.current = upgradeTile(buildGridRef.current, col, row, material);
       } else {
-        const cost = costFor(kind, material);
+        const cost = scaled(costFor(kind, material));
         if (statsRef.current.wood < cost.wood || statsRef.current.plastic < cost.plastic) return;
         statsRef.current.wood -= cost.wood;
         statsRef.current.plastic -= cost.plastic;
         buildGridRef.current = placeTile(buildGridRef.current, col, row, kind, material, buildModeRef.current.rot);
       }
+      // RAFT-302: Builder "Sturdy" raises the new structure's HP.
+      const hpMult = perkRef.current.structureHpMult;
+      if (hpMult !== 1) {
+        const g = buildGridRef.current;
+        buildGridRef.current = {
+          tiles: g.tiles.map((t) =>
+            t.col === col && t.row === row
+              ? { ...t, maxHp: Math.round(t.maxHp * hpMult), hp: Math.round(t.maxHp * hpMult) }
+              : t,
+          ),
+          nextId: g.nextId,
+        };
+      }
       if (kind === 'wall') bumpAch('builtWalls');
       if (kind === 'roof') bumpAch('builtRoof');
+      // RAFT-301/304: building grants XP and advances the build objective.
+      structuresBuilt += 1;
+      onXp(action === 'upgrade' ? XP_REWARDS.upgrade : XP_REWARDS.build);
       playChopSound();
       pushBuildCounts();
     };
@@ -1200,6 +1315,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
     // real progression system through window.__onXpFromGame.
     const onXp = (amount: number) => {
       if (typeof window === 'undefined') return;
+      if (onXpGainRef.current) { onXpGainRef.current(amount); return; }
       if (window.__onXpFromGame) { window.__onXpFromGame(amount); return; }
       if (window.__debugHitboxes) console.log('[XP] +' + amount);
     };
@@ -1212,12 +1328,14 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
     // auto-collects them into the stats. Also fires the XP hook.
     const grantKillRewards = (enemy: 'frog' | 'shark' | 'kraken', x: number, y: number) => {
       for (const drop of rollLoot(enemy)) {
-        if (drop.type === 'wood') statsRef.current.wood += drop.amount;
+        if (drop.type === 'wood') { statsRef.current.wood += drop.amount; woodGathered += drop.amount; }
         else if (drop.type === 'plastic') statsRef.current.plastic += drop.amount;
-        else statsRef.current.fish += drop.amount;
+        else { statsRef.current.fish += drop.amount; fishCaught += drop.amount; }
         lootDrops.push({ x, y, type: drop.type, amount: drop.amount, life: 60, vy: -0.9 - Math.random() * 0.4 });
       }
-      onXp(enemy === 'frog' ? 5 : enemy === 'shark' ? 20 : 100);
+      // RAFT-301/304: kills are a progression source and advance the objective.
+      kills += 1;
+      onXp(enemy === 'frog' ? XP_REWARDS.killFrog : enemy === 'shark' ? XP_REWARDS.killShark : XP_REWARDS.killKraken);
       onStatsUpdate(statsPayload());
     };
 
@@ -1298,12 +1416,15 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
 
       // RAFT-111: difficulty drives the hunger/thirst drain rates.
       // RAFT-203: an intact roof shelters the deck and negates weather strain.
+      // RAFT-302: Survivor perks slow the hunger/thirst drain; Fighter "Vigor"
+      // raises the health cap (maxHealth below).
       const sheltered = hasShelter(buildGridRef.current);
+      const maxHealth = MAX_HEALTH + perkRef.current.maxHealthBonus;
       const hungerWeather = sheltered ? 1 : weatherType === 'snow' ? WEATHER_SNOW_HUNGER : weatherType === 'rain' ? WEATHER_RAIN_DRAIN : 1;
       const thirstWeather = sheltered ? 1 : weatherType === 'heat' ? WEATHER_HEAT_THIRST : weatherType === 'rain' ? WEATHER_RAIN_DRAIN : 1;
-      statsRef.current.hunger -= 0.005 * DIFF.hungerRate * hungerWeather;
+      statsRef.current.hunger -= 0.005 * DIFF.hungerRate * hungerWeather * perkRef.current.hungerMult;
       if (statsRef.current.hunger < 0) statsRef.current.hunger = 0;
-      statsRef.current.thirst -= 0.004 * DIFF.thirstRate * thirstWeather;
+      statsRef.current.thirst -= 0.004 * DIFF.thirstRate * thirstWeather * perkRef.current.thirstMult;
       if (statsRef.current.thirst < 0) statsRef.current.thirst = 0;
       if (statsRef.current.thirst === 0) {
         statsRef.current.health = applyDamage(statsRef.current.health, 0.003 * DIFF.damageMult);
@@ -1355,8 +1476,14 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         window.__floorsRef = countKind(g, 'floor');
       }
       // RAFT-203: an intact roof shelters the deck — small passive health regen.
+      // RAFT-302: Survivor "Resilience" / Builder "Shelter" add flat regen.
       if (sheltered) {
-        statsRef.current.health = applyHeal(statsRef.current.health, ROOF_REGEN_BONUS);
+        statsRef.current.health = applyHeal(statsRef.current.health, ROOF_REGEN_BONUS + perkRef.current.regenBonus, maxHealth);
+      }
+
+      // RAFT-308: a storm (rain) batters an unsheltered raft; a roof mitigates.
+      if (isRaining && !sheltered && statsRef.current.raftHealth > 0) {
+        statsRef.current.raftHealth = Math.max(0, statsRef.current.raftHealth - STORM_RAFT_DAMAGE);
       }
 
       // RAFT-206: raft integrity at 0 starts a sinking sequence — warning, then
@@ -1597,7 +1724,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         // Passive HP regen when well-fed and hydrated (not in water)
         const wellFed = statsRef.current.hunger > 50 && statsRef.current.thirst > 50;
         const regenRate = (wellFed ? 0.004 : 0.001) * DIFF.regenBonus;
-        if (statsRef.current.health < 5) statsRef.current.health += regenRate;
+        if (statsRef.current.health < maxHealth) statsRef.current.health = Math.min(maxHealth, statsRef.current.health + regenRate);
       }
 
       if ((typeof window !== 'undefined' ? window.__hasRodRef : false) && keys.F && fishingState === 'idle') {
@@ -1623,14 +1750,16 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         }
         if (fishingTimer <= 0) { fishingState = 'idle'; } // Timeout — no fish
       }
-      else if (fishingState === 'caught') { if (keys.F) { statsRef.current.fish += 1; fishingState = 'idle'; } }
+      else if (fishingState === 'caught') { if (keys.F) { statsRef.current.fish += 1; fishCaught += 1; onXp(XP_REWARDS.catchFish); fishingState = 'idle'; } }
 
       if (attackTimer > 0) attackTimer--;
       if (eatCooldown > 0) eatCooldown--;
       if (cookingTimer > 0) cookingTimer--;
       const weapon = WEAPON_TIERS[spearTierRef.current];
+      // RAFT-302: Fighter "Might" boosts damage, "Swift" shortens cooldown.
+      const spearDamage = weapon.damage * perkRef.current.damageMult;
       if ((typeof window !== 'undefined' ? window.__hasSpearRef : false) && keys.Space && attackTimer === 0) {
-        attackTimer = weapon.cooldown; // RAFT-106: tier-driven cooldown
+        attackTimer = Math.max(1, Math.round(weapon.cooldown * perkRef.current.cooldownMult)); // RAFT-106/302
         playChopSound();
         let hitLanded = false;
 
@@ -1639,7 +1768,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         for (let i = frogs.length - 1; i >= 0; i--) {
           const frog = frogs[i];
           if (inAttackArc(player, frog, SPEAR_REACH)) {
-            spawnDamageNumber(frog.x + frog.width / 2, frog.y, weapon.damage);
+            spawnDamageNumber(frog.x + frog.width / 2, frog.y, spearDamage);
             frogs.splice(i, 1);
             bumpAch('frogsKilled'); // RAFT-004
             grantKillRewards('frog', frog.x + frog.width / 2, frog.y + frog.height / 2);
@@ -1651,12 +1780,12 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         if (kraken && kraken.state !== 'dying') {
           const kBox = { x: kraken.x - KRAKEN_BOX / 2, y: kraken.y - KRAKEN_BOX / 2, width: KRAKEN_BOX, height: KRAKEN_BOX };
           if (inAttackArc(player, kBox, KRAKEN_REACH)) {
-            kraken.hp -= weapon.damage;
+            kraken.hp -= spearDamage;
             kraken.hitFlash = 20;
-            spawnDamageNumber(kraken.x, kraken.y - 60, weapon.damage, '#FF8FD6');
+            spawnDamageNumber(kraken.x, kraken.y - 60, spearDamage, '#FF8FD6');
             hitLanded = true;
             if (kraken.hp <= 0) {
-              statsRef.current.health = applyHeal(statsRef.current.health, KRAKEN_HEAL_ON_KILL);
+              statsRef.current.health = applyHeal(statsRef.current.health, KRAKEN_HEAL_ON_KILL, maxHealth);
               statsRef.current.hunger = Math.min(100, statsRef.current.hunger + 40);
               window.__chestMessage = { text: 'KRAKEN DEFEATED!', time: 180 };
               grantKillRewards('kraken', kraken.x, kraken.y);
@@ -1668,9 +1797,9 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
 
         // SHARK
         if (shark && inAttackArc(player, shark, SHARK_REACH)) {
-          shark.health -= weapon.damage;
+          shark.health -= spearDamage;
           shark.hitFlash = 12;
-          spawnDamageNumber(shark.x + shark.width / 2, shark.y, weapon.damage);
+          spawnDamageNumber(shark.x + shark.width / 2, shark.y, spearDamage);
           hitLanded = true;
           if (shark.health <= 0) {
             grantKillRewards('shark', shark.x + shark.width / 2, shark.y + shark.height / 2);
@@ -2137,12 +2266,71 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         if (raftHit || playerHit) {
           statsRef.current[item.type]++;
           if (item.type === 'wood') {
+            woodGathered += 1;
             bumpAch('totalWood'); // RAFT-004
+            onXp(XP_REWARDS.gatherWood); // RAFT-301
           } else if (item.type === 'plastic') {
             bumpAch('totalPlastic'); // RAFT-004
+            onXp(XP_REWARDS.gatherPlastic); // RAFT-301
+          } else {
+            fishCaught += 1;
+            onXp(XP_REWARDS.catchFish); // RAFT-301
           } items.splice(i, 1); continue;
         }
         if (item.y > 640) items.splice(i, 1);
+      }
+
+      // ===== RAFT-305: islands & floating chests (exploration) =====
+      const grantExploreLoot = (table: LootDrop[], x: number, y: number) => {
+        for (const drop of rollTable(table)) {
+          if (drop.type === 'wood') { statsRef.current.wood += drop.amount; woodGathered += drop.amount; }
+          else if (drop.type === 'plastic') statsRef.current.plastic += drop.amount;
+          else { statsRef.current.fish += drop.amount; fishCaught += drop.amount; }
+          lootDrops.push({ x, y, type: drop.type, amount: drop.amount, life: 60, vy: -0.9 - Math.random() * 0.4 });
+        }
+      };
+      islandTimer += 1;
+      if (islandTimer >= ISLAND_SPAWN_PERIOD && islands.length < 2) { islandTimer = 0; spawnIsland(); }
+      chestTimer += 1;
+      if (chestTimer >= CHEST_SPAWN_PERIOD && chests.length < 3) { chestTimer = 0; spawnChest(); }
+      for (let i = islands.length - 1; i >= 0; i--) {
+        const isl = islands[i];
+        isl.x += isl.vx;
+        isl.y += isl.vy;
+        isl.life -= 1;
+        const hitX = isl.x < raftRef.current.x + raftRef.current.width && isl.x + isl.width > raftRef.current.x;
+        const hitY = isl.y < raftScreenY + raftRef.current.height && isl.y + isl.height > raftScreenY - 40;
+        if (!isl.collected && hitX && hitY) {
+          isl.collected = true;
+          islandsFound += 1;
+          grantExploreLoot(ISLAND_LOOT, isl.x + isl.width / 2, isl.y);
+          onXp(XP_REWARDS.explore);
+          if (typeof window !== 'undefined') window.__chestMessage = { text: 'ISLAND DISCOVERED!', time: 180 };
+        }
+        if (isl.life <= 0 || isl.x > 1000 || isl.x + isl.width < -200) islands.splice(i, 1);
+      }
+      for (let i = chests.length - 1; i >= 0; i--) {
+        const ch = chests[i];
+        ch.x += ch.vx;
+        ch.y += ch.vy;
+        ch.life -= 1;
+        ch.glow = (ch.glow + 0.08) % (Math.PI * 2);
+        const hitX = ch.x < raftRef.current.x + raftRef.current.width && ch.x + ch.size > raftRef.current.x;
+        const hitY = ch.y < raftScreenY + raftRef.current.height && ch.y + ch.size > raftScreenY - 30;
+        if (!ch.opened && hitX && hitY) {
+          ch.opened = true;
+          islandsFound += 1;
+          grantExploreLoot(CHEST_LOOT, ch.x, ch.y);
+          onXp(XP_REWARDS.explore);
+          if (typeof window !== 'undefined') window.__chestMessage = { text: 'CHEST OPENED!', time: 180 };
+        }
+        if (ch.life <= 0 || ch.x > 1000 || ch.x + ch.size < -200) chests.splice(i, 1);
+      }
+
+      // RAFT-306: fire the win condition exactly once when the run reaches WIN_DAY.
+      if (!victoryFired && statsRef.current.day >= WIN_DAY) {
+        victoryFired = true;
+        onVictoryRef.current?.();
       }
 
       if (time - lastStatsUpdate > 10) { onStatsUpdate(statsPayload()); lastStatsUpdate = time; }
@@ -3302,6 +3490,10 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
 
       // Fish swim under everything else
       fishes.forEach((fish) => drawFish(fish));
+
+      // RAFT-305: floating islands & treasure chests drift past the raft.
+      islands.forEach((isl) => { if (!isl.collected) drawIsland(isl); });
+      chests.forEach((ch) => drawChest(ch));
 
       items.forEach((item) => {
         if (item.type === 'wood') drawWood(item);

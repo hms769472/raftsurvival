@@ -7,6 +7,7 @@ import {
   RAFT_REPAIR_AMOUNT,
   EXPAND_COST_BASE,
   EXPAND_COST_STEP,
+  TECH_UNLOCK,
   type WeaponTier,
 } from '@/lib/balance';
 
@@ -24,13 +25,18 @@ type CraftingMenuProps = {
   expansions: number;
   /** RAFT-208: current wood/plastic cap shown in the header. */
   capacity: number;
+  /** RAFT-303: player level; gates the tech tiers below. */
+  level: number;
 };
 
-export default function CraftingMenu({ onClose, onCraft, wood, plastic, hasRod, hasSpear, hasHammer, hasRainBarrel, hasCampfire, walls, roofs, floors, spearTier, needsRepair, expansions, capacity }: CraftingMenuProps) {
+export default function CraftingMenu({ onClose, onCraft, wood, plastic, hasRod, hasSpear, hasHammer, hasRainBarrel, hasCampfire, walls, roofs, floors, spearTier, needsRepair, expansions, capacity, level }: CraftingMenuProps) {
   const btn = (enabled: boolean, color: string) => 'p-2 border-2 text-[10px] flex flex-col items-center gap-1 transition-colors rounded ' + (enabled ? color : 'bg-gray-400 border-gray-500 text-gray-200 cursor-not-allowed');
   const nextTier = nextWeaponTier(spearTier);
   const nextTierCost = nextTier ? WEAPON_TIERS[nextTier] : null;
-  const canUpgrade = hasSpear && nextTierCost !== null && wood >= nextTierCost.wood && plastic >= nextTierCost.plastic;
+  // RAFT-303: tech tiers require a player level; locked items show the gate.
+  const locked = (type: string) => level < (TECH_UNLOCK[type] ?? 1);
+  const lockText = (type: string) => `🔒 Requires LV ${TECH_UNLOCK[type] ?? 1}`;
+  const canUpgrade = hasSpear && nextTierCost !== null && !locked('SPEAR_UPGRADE') && wood >= nextTierCost.wood && plastic >= nextTierCost.plastic;
   // RAFT-205/207: visible, size-scaled costs.
   const canRepair = needsRepair && wood >= RAFT_REPAIR_COST.wood && plastic >= RAFT_REPAIR_COST.plastic;
   const expandWood = EXPAND_COST_BASE.wood + EXPAND_COST_STEP.wood * expansions;
@@ -52,29 +58,29 @@ export default function CraftingMenu({ onClose, onCraft, wood, plastic, hasRod, 
             <span>EXPAND RAFT (#{expansions + 1})</span>
             <span className="text-[9px]">{expandWood} Wood, {expandPlastic} Plastic</span>
           </button>
-          <button onClick={() => onCraft('ROD')} disabled={wood < 5 || hasRod} className={btn(wood >= 5 && !hasRod, 'bg-[#F39C12] border-[#D68910] text-white')} style={{ fontFamily: '"Press Start 2P", monospace' }}>
-            <span>{hasRod ? '✓ FISHING ROD' : 'FISHING ROD'}</span><span className="text-[9px]">5 Wood</span>
+          <button onClick={() => onCraft('ROD')} disabled={wood < 5 || hasRod || locked('ROD')} className={btn(wood >= 5 && !hasRod && !locked('ROD'), 'bg-[#F39C12] border-[#D68910] text-white')} style={{ fontFamily: '"Press Start 2P", monospace' }}>
+            <span>{hasRod ? '✓ FISHING ROD' : 'FISHING ROD'}</span><span className="text-[9px]">{locked('ROD') ? lockText('ROD') : '5 Wood'}</span>
           </button>
-          <button onClick={() => onCraft('SPEAR')} disabled={wood < 8 || hasSpear} className={btn(wood >= 8 && !hasSpear, 'bg-[#E74C3C] border-[#C0392B] text-white')} style={{ fontFamily: '"Press Start 2P", monospace' }}>
-            <span>{hasSpear ? `✓ ${WEAPON_TIERS[spearTier].name.toUpperCase()}` : 'WOODEN SPEAR'}</span><span className="text-[9px]">8 Wood · DMG {WEAPON_TIERS[spearTier].damage}</span>
+          <button onClick={() => onCraft('SPEAR')} disabled={wood < 8 || hasSpear || locked('SPEAR')} className={btn(wood >= 8 && !hasSpear && !locked('SPEAR'), 'bg-[#E74C3C] border-[#C0392B] text-white')} style={{ fontFamily: '"Press Start 2P", monospace' }}>
+            <span>{hasSpear ? `✓ ${WEAPON_TIERS[spearTier].name.toUpperCase()}` : 'WOODEN SPEAR'}</span><span className="text-[9px]">{locked('SPEAR') ? lockText('SPEAR') : `8 Wood · DMG ${WEAPON_TIERS[spearTier].damage}`}</span>
           </button>
           <button onClick={() => onCraft('SPEAR_UPGRADE')} disabled={!canUpgrade} className={btn(!!canUpgrade, 'bg-[#C0392B] border-[#7B241C] text-white')} style={{ fontFamily: '"Press Start 2P", monospace' }}>
             <span>{nextTier ? `UPGRADE → ${nextTierCost!.name.toUpperCase()}` : '✓ MAX SPEAR TIER'}</span>
-            <span className="text-[9px]">{nextTierCost ? `${nextTierCost.wood} Wood, ${nextTierCost.plastic} Plastic · DMG ${nextTierCost.damage}` : 'Fully upgraded'}</span>
+            <span className="text-[9px]">{nextTierCost ? (locked('SPEAR_UPGRADE') ? lockText('SPEAR_UPGRADE') : `${nextTierCost.wood} Wood, ${nextTierCost.plastic} Plastic · DMG ${nextTierCost.damage}`) : 'Fully upgraded'}</span>
           </button>
-          <button onClick={() => onCraft('HAMMER')} disabled={wood < 8 || hasHammer} className={btn(wood >= 8 && !hasHammer, 'bg-[#8E44AD] border-[#6C3483] text-white')} style={{ fontFamily: '"Press Start 2P", monospace' }}>
-            <span>{hasHammer ? '✓ HAMMER' : 'HAMMER 🔨'}</span><span className="text-[9px]">8 Wood (Unlocks Building)</span>
+          <button onClick={() => onCraft('HAMMER')} disabled={wood < 8 || hasHammer || locked('HAMMER')} className={btn(wood >= 8 && !hasHammer && !locked('HAMMER'), 'bg-[#8E44AD] border-[#6C3483] text-white')} style={{ fontFamily: '"Press Start 2P", monospace' }}>
+            <span>{hasHammer ? '✓ HAMMER' : 'HAMMER 🔨'}</span><span className="text-[9px]">{locked('HAMMER') ? lockText('HAMMER') : '8 Wood (Unlocks Building)'}</span>
           </button>
           <div className="p-2 border-2 border-dashed border-[#8B4513] rounded text-[9px] text-[#5D4037]" style={{ fontFamily: '"Press Start 2P", monospace' }}>
             <div className="mb-1">BUILD MODE (in game)</div>
             <div>Press B · 1-6 pick · R rotate · T material</div>
             <div className="mt-1">Walls {walls} · Roofs {roofs} · Floors {floors}</div>
           </div>
-          <button onClick={() => onCraft('RAIN_BARREL')} disabled={wood < 6 || !hasHammer || hasRainBarrel} className={btn(wood >= 6 && hasHammer && !hasRainBarrel, 'bg-[#2980B9] border-[#1F618D] text-white')} style={{ fontFamily: '"Press Start 2P", monospace' }}>
-            <span>{hasRainBarrel ? '✓ RAIN BARREL' : 'RAIN BARREL 🌧️'}</span><span className="text-[9px]">6 Wood</span>
+          <button onClick={() => onCraft('RAIN_BARREL')} disabled={wood < 6 || !hasHammer || hasRainBarrel || locked('RAIN_BARREL')} className={btn(wood >= 6 && hasHammer && !hasRainBarrel && !locked('RAIN_BARREL'), 'bg-[#2980B9] border-[#1F618D] text-white')} style={{ fontFamily: '"Press Start 2P", monospace' }}>
+            <span>{hasRainBarrel ? '✓ RAIN BARREL' : 'RAIN BARREL 🌧️'}</span><span className="text-[9px]">{locked('RAIN_BARREL') ? lockText('RAIN_BARREL') : '6 Wood'}</span>
           </button>
-          <button onClick={() => onCraft('CAMPFIRE')} disabled={wood < 5 || !hasHammer || hasCampfire} className={btn(wood >= 5 && hasHammer && !hasCampfire, 'bg-[#E67E22] border-[#A04000] text-white')} style={{ fontFamily: '"Press Start 2P", monospace' }}>
-            <span>{hasCampfire ? '✓ CAMPFIRE' : 'CAMPFIRE 🔥'}</span><span className="text-[9px]">5 Wood</span>
+          <button onClick={() => onCraft('CAMPFIRE')} disabled={wood < 5 || !hasHammer || hasCampfire || locked('CAMPFIRE')} className={btn(wood >= 5 && hasHammer && !hasCampfire && !locked('CAMPFIRE'), 'bg-[#E67E22] border-[#A04000] text-white')} style={{ fontFamily: '"Press Start 2P", monospace' }}>
+            <span>{hasCampfire ? '✓ CAMPFIRE' : 'CAMPFIRE 🔥'}</span><span className="text-[9px]">{locked('CAMPFIRE') ? lockText('CAMPFIRE') : '5 Wood'}</span>
           </button>
         </div>
         <button onClick={onClose} className="mt-4 w-full bg-[#E74C3C] text-white p-2.5 border-2 border-[#8B0000] text-[10px]" style={{ fontFamily: '"Press Start 2P", monospace' }}>CLOSE</button>

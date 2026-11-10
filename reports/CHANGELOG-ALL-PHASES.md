@@ -81,3 +81,35 @@ Branch: `feature/raft-v0.2` · Start tag: `phase-start`
 
 ---
 
+## Phase 3 — Progression & Goals (RAFT-E3) — tag `phase-3`
+
+**Commit:** _(this commit)_
+
+**Added**
+- `lib/systems/progression.ts` — pure XP/level reducer: `DEFAULT_PROGRESSION`, `xpForNext`, `xpProgress`, `addXp` (multi-level, +1 perk point/level, cap `MAX_LEVEL`), `totalPerkPoints`, `normalizeProgression`
+- `lib/systems/perks.ts` — 3 branches × 3 perks; `perkEffects` derives damage/cooldown/drain/regen/HP/structure modifiers
+- `lib/systems/objectives.ts` — 12-objective chain over monotonic run stats; `advanceChain` reports what just completed
+- `lib/systems/progression.test.ts`, `lib/systems/perks.test.ts`, `lib/systems/objectives.test.ts` — 23 new unit tests
+- `components/PerkTree.tsx` — perk tree modal (spend points on ranks)
+- `components/Victory.tsx` — win screen + New Game+
+
+**Modified**
+- `lib/balance.ts` — Phase 3 block: `MAX_LEVEL`, XP curve + `XP_REWARDS`, `TECH_UNLOCK`, island/chest spawn + loot tables, `WIN_DAY`, `STORM_RAFT_DAMAGE`; removed dead `NIGHT_VISION_ALPHA`
+- `lib/save.ts` — `SAVE_VERSION 5`; `progression` / `perkRanks` / `objectiveIndex` fields + normalization
+- `lib/systems/combat.ts` — extracted `rollTable` for island/chest loot
+- `components/Game.tsx` — XP sources; perk effects on combat/survival/build; storm raft damage; island & chest spawn/loot/render; objective counters; win trigger; snapshot persists progression
+- `components/HUD.tsx` — XP bar, level chip, objective tracker, cooked-fish slot, perk button + badge
+- `components/CraftingMenu.tsx` — `level` prop gates tech tiers (`🔒 Requires LV n`)
+- `components/MainMenu.tsx` — `onSkins` + SKINS button
+- `app/page.tsx` — progression/perk/objective/victory state + callbacks; `PerkTree`/`Victory`/`SkinShop` mounted; save/load restore; New Game+ & resets
+
+**Tickets:** RAFT-301,302,303,304,305,306,307,308 Done
+
+**Dependencies:** none added.
+
+**Config/data:** save schema v4 → v5 (`progression`, `perkRanks`, `objectiveIndex`; old saves normalize safely).
+
+**Verification:** tsc 0 errors · lint 0 errors / 33 warnings · build OK · vitest 56/56 passing
+
+---
+

@@ -162,3 +162,56 @@ export const LOOT_TABLES: Record<'frog' | 'shark' | 'kraken', LootDrop[]> = {
     { type: 'fish', min: 3, max: 6, chance: 1 },
   ],
 };
+
+// ===== Progression (RAFT-301) =====
+export const MAX_LEVEL = 10;
+// XP required to go from level L to L+1 = base + step * (L - 1).
+export const XP_CURVE_BASE = 100;
+export const XP_CURVE_STEP = 60;
+// XP awarded per activity (all gains flow through the single XP sink).
+export const XP_REWARDS = {
+  gatherWood: 3, // per wood item picked up
+  gatherPlastic: 3,
+  catchFish: 5,
+  cook: 6,
+  craft: 12,
+  build: 8, // per structure placed
+  upgrade: 10,
+  killFrog: 5,
+  killShark: 20,
+  killKraken: 100,
+  explore: 15, // per island / chest looted
+  surviveDay: 30,
+} as const;
+
+// RAFT-303: tech tiers gated by player level. Items above the level show locked.
+export const TECH_UNLOCK: Record<string, number> = {
+  ROD: 1,
+  SPEAR: 1,
+  HAMMER: 1,
+  REPAIR: 1,
+  EXPAND: 1,
+  RAIN_BARREL: 2,
+  CAMPFIRE: 2,
+  SPEAR_UPGRADE: 3,
+};
+
+// ===== Islands / chests / wrecks (RAFT-305) =====
+export const ISLAND_SPAWN_PERIOD = 1500; // frames between island spawns
+export const CHEST_SPAWN_PERIOD = 2100; // frames between floating-chest spawns
+export const ISLAND_LOOT: LootDrop[] = [
+  { type: 'wood', min: 6, max: 14, chance: 1 },
+  { type: 'plastic', min: 3, max: 8, chance: 0.9 },
+  { type: 'fish', min: 1, max: 3, chance: 0.6 },
+];
+export const CHEST_LOOT: LootDrop[] = [
+  { type: 'wood', min: 3, max: 9, chance: 1 },
+  { type: 'plastic', min: 2, max: 6, chance: 0.9 },
+  { type: 'fish', min: 1, max: 2, chance: 0.4 },
+];
+
+// ===== Win condition (RAFT-306) =====
+export const WIN_DAY = 20; // survive to this day to win
+
+// ===== Weather (RAFT-308) =====
+export const STORM_RAFT_DAMAGE = 0.02; // raft integrity lost per frame in a storm (no shelter)

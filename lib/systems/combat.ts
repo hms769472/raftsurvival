@@ -84,16 +84,24 @@ export function simulatedDps(day: number, difficultyDamageMult = 1): number {
   return dps * s.damageMult * difficultyDamageMult;
 }
 
-/** Rolls one enemy's loot table into concrete drop amounts (RAFT-103). */
-export function rollLoot(
-  enemy: keyof typeof LOOT_TABLES,
+/** Rolls an arbitrary loot table into concrete drop amounts (RAFT-305). */
+export function rollTable(
+  table: LootDrop[],
   rng: () => number = Math.random,
 ): { type: LootType; amount: number }[] {
   const drops: { type: LootType; amount: number }[] = [];
-  for (const drop of LOOT_TABLES[enemy] as LootDrop[]) {
+  for (const drop of table) {
     if (rng() > drop.chance) continue;
     const amount = drop.min + Math.floor(rng() * (drop.max - drop.min + 1));
     if (amount > 0) drops.push({ type: drop.type, amount });
   }
   return drops;
+}
+
+/** Rolls one enemy's loot table into concrete drop amounts (RAFT-103). */
+export function rollLoot(
+  enemy: keyof typeof LOOT_TABLES,
+  rng: () => number = Math.random,
+): { type: LootType; amount: number }[] {
+  return rollTable(LOOT_TABLES[enemy] as LootDrop[], rng);
 }

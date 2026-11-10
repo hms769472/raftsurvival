@@ -8,8 +8,10 @@
 
 import type { WeaponTier } from '@/lib/balance';
 import type { StoredTile } from '@/lib/systems/raft';
+import { DEFAULT_PROGRESSION, normalizeProgression, type ProgressionState } from '@/lib/systems/progression';
+import { normalizePerkRanks, type PerkRanks } from '@/lib/systems/perks';
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 export const SAVE_KEY = 'raftSave';
 
 export type GameSnapshot = {
@@ -40,6 +42,12 @@ export type GameSnapshot = {
   spearTier: WeaponTier;
   /** Placed build tiles (RAFT-201). Empty for saves made before Phase 2. */
   buildGrid: StoredTile[];
+  /** RAFT-301: XP / level / perk points. */
+  progression: ProgressionState;
+  /** RAFT-302: spent perk ranks keyed by perk id. */
+  perkRanks: PerkRanks;
+  /** RAFT-304: index of the active objective in the chain. */
+  objectiveIndex: number;
 };
 
 /** Mutable box shared between <Game> and the page so a save can read live state. */
@@ -70,6 +78,9 @@ export const DEFAULT_SNAPSHOT: GameSnapshot = {
   barrelWater: 0,
   spearTier: 'wooden',
   buildGrid: [],
+  progression: { ...DEFAULT_PROGRESSION },
+  perkRanks: {},
+  objectiveIndex: 0,
 };
 
 const asNumber = (v: unknown, fallback: number): number =>
@@ -108,6 +119,9 @@ export function normalizeSnapshot(raw: unknown): GameSnapshot {
     barrelWater: asNumber(r.barrelWater, DEFAULT_SNAPSHOT.barrelWater),
     spearTier: asTier(r.spearTier, DEFAULT_SNAPSHOT.spearTier),
     buildGrid: Array.isArray(r.buildGrid) ? (r.buildGrid as StoredTile[]) : [],
+    progression: normalizeProgression(r.progression),
+    perkRanks: normalizePerkRanks(r.perkRanks),
+    objectiveIndex: Math.max(0, Math.floor(asNumber(r.objectiveIndex, 0))),
   };
 }
 

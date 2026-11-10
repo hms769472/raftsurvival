@@ -54,14 +54,14 @@ Legend: `Todo` · `In progress` · `Done` · `Partial` · `Skipped`
 
 | Key | Title | Status |
 |---|---|---|
-| RAFT-301 | Player XP & Level system | Todo |
-| RAFT-302 | Perk/skill tree (Survivor/Fighter/Builder) | Todo |
-| RAFT-303 | Tech tiers gated by level/blueprints | Todo |
-| RAFT-304 | Objectives / quest chain | Todo |
-| RAFT-305 | Revive Islands & Chests spawn + loot | Todo |
-| RAFT-306 | Win condition / ending | Todo |
-| RAFT-307 | Meta-progression: SkinShop + coins | Todo |
-| RAFT-308 | Day/night & weather gameplay effects | Todo |
+| RAFT-301 | Player XP & Level system | Done |
+| RAFT-302 | Perk/skill tree (Survivor/Fighter/Builder) | Done |
+| RAFT-303 | Tech tiers gated by level/blueprints | Done |
+| RAFT-304 | Objectives / quest chain | Done |
+| RAFT-305 | Revive Islands & Chests spawn + loot | Done |
+| RAFT-306 | Win condition / ending | Done |
+| RAFT-307 | Meta-progression: SkinShop + coins | Done |
+| RAFT-308 | Day/night & weather gameplay effects | Done |
 
 ## Phase 4 — Survival Economy & Balance (RAFT-E4)
 

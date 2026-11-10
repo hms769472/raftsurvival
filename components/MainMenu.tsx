@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React from 'react';
 
@@ -9,10 +9,11 @@ interface MainMenuProps {
   onCredits: () => void;
   onCoop: () => void;
   onAchievements: () => void;
+  onSkins: () => void;
   hasSave: boolean;
 }
 
-export default function MainMenu({ onPlay, onLoad, onSettings, onCredits, onCoop, onAchievements, hasSave }: MainMenuProps) {
+export default function MainMenu({ onPlay, onLoad, onSettings, onCredits, onCoop, onAchievements, onSkins, hasSave }: MainMenuProps) {
   return (
     <div className="flex flex-col items-center justify-between h-screen bg-[#2D8FBD] relative overflow-hidden py-6">
       <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-blue-200 via-transparent to-transparent"></div>
@@ -42,6 +43,7 @@ export default function MainMenu({ onPlay, onLoad, onSettings, onCredits, onCoop
         <button onClick={onCoop} className="hover:text-white transition-colors drop-shadow-[0_2px_0_rgba(255,255,255,0.5)]">CO-OP</button>
         <button onClick={onSettings} className="hover:text-white transition-colors drop-shadow-[0_2px_0_rgba(255,255,255,0.5)]">SETTINGS</button>
         <button onClick={onAchievements} className="hover:text-white transition-colors drop-shadow-[0_2px_0_rgba(255,255,255,0.5)]">ACHIEVEMENTS</button>
+        <button onClick={onSkins} className="hover:text-white transition-colors drop-shadow-[0_2px_0_rgba(255,255,255,0.5)]">SKINS</button>
         <button onClick={onCredits} className="hover:text-white transition-colors drop-shadow-[0_2px_0_rgba(255,255,255,0.5)]">CREDITS</button>
       </div>
 
