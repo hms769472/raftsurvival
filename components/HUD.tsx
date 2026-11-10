@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import React from 'react';
 
 type HUDProps = {
@@ -7,12 +7,14 @@ type HUDProps = {
   onEat: () => void; onEatCooked: () => void; onCook: () => void; onDrink: () => void;
   onAttack: () => void; onHook: () => void;
   hasSpear: boolean; hasRainBarrel: boolean; barrelWater: number; raftHealth: number;
+  /** RAFT-208: wood/plastic storage cap (raised by crates). */
+  storageCap: number;
   playerState: 'standing' | 'sitting' | 'laying';
   onPoseChange: (pose: 'standing' | 'sitting' | 'laying') => void;
   onMainMenu: () => void;
 };
 
-export default function HUD({ health, hunger, thirst, fish, day, wood, plastic, onOpenCrafting, onOpenRecipes, onEat, onEatCooked, onCook, onDrink, onAttack, onHook, hasSpear, hasRainBarrel, barrelWater, raftHealth, playerState, onPoseChange, onMainMenu }: HUDProps) {
+export default function HUD({ health, hunger, thirst, fish, day, wood, plastic, onOpenCrafting, onOpenRecipes, onEat, onEatCooked, onCook, onDrink, onAttack, onHook, hasSpear, hasRainBarrel, barrelWater, raftHealth, storageCap, playerState, onPoseChange, onMainMenu }: HUDProps) {
   return (
     <>
       <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>
@@ -23,8 +25,8 @@ export default function HUD({ health, hunger, thirst, fish, day, wood, plastic, 
               {[1, 2, 3, 4, 5].map((heart) => <span key={heart}>{heart <= Math.ceil(health) ? '❤️' : '🖤'}</span>)}
             </div>
             <div className="text-xs text-white drop-shadow-[0_2px_0_rgba(0,0,0,1)] mt-1 leading-tight">
-              <div>Wood: {wood}</div>
-              <div>Plastic: {plastic}</div>
+              <div>Wood: {wood}/{storageCap}</div>
+              <div>Plastic: {plastic}/{storageCap}</div>
             </div>
             <div className="flex flex-col gap-1 mt-1">
               <div className="w-36 h-3 bg-[#222] border border-black p-[1px]"><div className="h-full bg-[#F39C12]" style={{ width: `${Math.max(0, hunger)}%` }}></div></div>

@@ -23,14 +23,52 @@ import {
   FROG_SPAWN_INTERVAL,
   FROG_CONTACT_DAMAGE,
   FROG_PROJECTILE_DAMAGE,
-  WALL_HP,
   WALL_BLOCK_HEIGHT,
   PLAYER_INVULN_FRAMES,
   WEAPON_TIERS,
+  MAX_RAFT_HEALTH,
+  STRUCTURE_COST,
+  TILE_SIZE,
+  ROOF_REGEN_BONUS,
+  SINK_WARNING_FRAMES,
+  SINK_TILE_LOSS_INTERVAL,
+  RAFT_REPAIR_COST,
+  RAFT_REPAIR_AMOUNT,
+  BASE_RAFT_HEIGHT,
+  EXPAND_COST_BASE,
+  EXPAND_COST_STEP,
+  EXPAND_SIZE,
+  MATERIAL_ORDER,
+  MATERIAL_UPGRADE_COST,
+  DRYING_RACK_PERIOD,
+  PURIFIER_PERIOD,
+  CRATE_CAPACITY,
+  STORAGE_CAP_BASE,
+  WEATHER_HEAT_THIRST,
+  WEATHER_SNOW_HUNGER,
+  WEATHER_RAIN_DRAIN,
   type WeaponTier,
   type LootType,
+  type StructureKind,
+  type MaterialTier,
 } from '@/lib/balance';
 import { applyHeal, applyDamage, inAttackArc, threatScale, isEnemyUnlocked, rollLoot } from '@/lib/systems/combat';
+import {
+  EMPTY_GRID,
+  findTile,
+  placeTile,
+  removeTile,
+  upgradeTile,
+  damageFirstOfKind,
+  repairAllTiles,
+  hasShelter,
+  countKind,
+  canPlace,
+  toStored,
+  fromStored,
+  migrateFlatBuild,
+  type BuildGrid,
+} from '@/lib/systems/raft';
 import {
   DEFAULT_ACH_STATS,
   normalizeAchStats,
@@ -45,7 +83,7 @@ import type { GameSnapshot, SnapshotStore } from '@/lib/save';
 import { SAVE_VERSION } from '@/lib/save';
 
 type GameProps = {
-  onStatsUpdate: (stats: { health: number; hunger: number; thirst: number; fish: number; day: number; wood: number; plastic: number; raftHealth: number }) => void;
+  onStatsUpdate: (stats: { health: number; hunger: number; thirst: number; fish: number; day: number; wood: number; plastic: number; raftHealth: number; walls?: number; roofs?: number; floors?: number; raftSize?: number; capacity?: number; damaged?: boolean }) => void;
   craftAction: { type: string; id: number } | null;
   onCraftComplete: () => void;
   raftWidth: number;
@@ -148,7 +186,7 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     plastic: initialState?.plastic ?? 0,
     raftHealth: initialState?.raftHealth ?? 100,
   });
-  const raftRef = useRef({ x: 400 - RAFT_WIDTH / 2, y: RAFT_CENTER_Y, width: RAFT_WIDTH, height: 150 });
+  const raftRef = useRef({ x: 400 - RAFT_WIDTH / 2, y: RAFT_CENTER_Y, width: RAFT_WIDTH, height: BASE_RAFT_HEIGHT });
 
   const playerStateRef = useRef(playerState);
   useEffect(() => { playerStateRef.current = playerState; }, [playerState]);
@@ -157,6 +195,27 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
   // it through a ref so the effect never needs to restart.
   const spearTierRef = useRef<WeaponTier>(spearTier ?? 'wooden');
   useEffect(() => { spearTierRef.current = spearTier ?? 'wooden'; }, [spearTier]);
+
+  // RAFT-201/202: the build grid is the single source of truth for placed
+  // structures. Hydrated from the save — or migrated from a pre-grid save's
+  // flat wall/roof/floor counts (Phase 2 migration) — or empty on a fresh run.
+  const buildGridRef = useRef<BuildGrid>(
+    initialState?.buildGrid && initialState.buildGrid.length
+      ? fromStored(initialState.buildGrid)
+      : initialState && (initialState.walls || initialState.roofs || initialState.floors)
+        ? migrateFlatBuild(
+            initialState.walls,
+            initialState.roofs,
+            initialState.floors,
+            Math.max(2, Math.round(RAFT_WIDTH / TILE_SIZE)),
+            Math.max(2, Math.round((initialState.raftWidth || BASE_RAFT_HEIGHT) / TILE_SIZE)),
+          )
+        : EMPTY_GRID,
+  );
+  // Live build-mode selection shared with the render pass.
+  const buildModeRef = useRef<{ active: boolean; kind: StructureKind; material: MaterialTier; rot: number; col: number; row: number; valid: boolean }>({
+    active: false, kind: 'wall', material: 'wood', rot: 0, col: 0, row: 0, valid: false,
+  });
 
   useEffect(() => {
     raftRef.current.height = raftWidth;
@@ -499,9 +558,26 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
   useEffect(() => {
     if (!craftAction) return;
     if (craftAction.type === 'REPAIR') {
-      if (statsRef.current.wood >= 5) { statsRef.current.wood -= 5; statsRef.current.health = 5; }
+      // RAFT-205: repair the RAFT (integrity + structure HP), never player HP.
+      const needsRepair =
+        statsRef.current.raftHealth < MAX_RAFT_HEALTH ||
+        buildGridRef.current.tiles.some((t) => t.hp < t.maxHp);
+      if (needsRepair && statsRef.current.wood >= RAFT_REPAIR_COST.wood && statsRef.current.plastic >= RAFT_REPAIR_COST.plastic) {
+        statsRef.current.wood -= RAFT_REPAIR_COST.wood;
+        statsRef.current.plastic -= RAFT_REPAIR_COST.plastic;
+        statsRef.current.raftHealth = Math.min(MAX_RAFT_HEALTH, statsRef.current.raftHealth + RAFT_REPAIR_AMOUNT);
+        buildGridRef.current = repairAllTiles(buildGridRef.current, RAFT_REPAIR_AMOUNT);
+      }
     } else if (craftAction.type === 'EXPAND') {
-      if (statsRef.current.wood >= 10 && statsRef.current.plastic >= 5) { statsRef.current.wood -= 10; statsRef.current.plastic -= 5; raftRef.current.height += 40; }
+      // RAFT-207: cost scales with deck size; the deck grows one tile row.
+      const expansions = Math.max(0, Math.round((raftRef.current.height - BASE_RAFT_HEIGHT) / EXPAND_SIZE));
+      const woodCost = EXPAND_COST_BASE.wood + EXPAND_COST_STEP.wood * expansions;
+      const plasticCost = EXPAND_COST_BASE.plastic + EXPAND_COST_STEP.plastic * expansions;
+      if (statsRef.current.wood >= woodCost && statsRef.current.plastic >= plasticCost) {
+        statsRef.current.wood -= woodCost;
+        statsRef.current.plastic -= plasticCost;
+        raftRef.current.height += EXPAND_SIZE;
+      }
     } else if (craftAction.type === 'ROD') {
       if (statsRef.current.wood >= 5) { statsRef.current.wood -= 5; }
     } else if (craftAction.type === 'SPEAR') {
@@ -550,9 +626,6 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     const projectiles: Projectile[] = [];
     const damageNumbers: DamageNumber[] = [];
     const lootDrops: LootPickup[] = [];
-    // RAFT-110: minimal per-wall durability (0 = destroyed). Phase 2 replaces
-    // this with real structure entities (RAFT-204).
-    const wallHp: number[] = [];
     const raindrops: Raindrop[] = [];
     const items: Item[] = [];
     let shark: Shark | null = null;
@@ -582,6 +655,8 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
       });
     };
 
+    const BUILD_ORDER: StructureKind[] = ['wall', 'floor', 'roof', 'crate', 'dryingrack', 'purifier'];
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft') keys.ArrowLeft = true;
       if (e.key === 'ArrowRight') keys.ArrowRight = true;
@@ -591,6 +666,23 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
       if (e.key === ' ') keys.Space = true;
       if (e.key.toLowerCase() === 'h') keys.H = true;
       if (e.key === 'F3') { e.preventDefault(); window.__debugHitboxes = !window.__debugHitboxes; } // RAFT-102 debug overlay
+      // RAFT-201/202: Build Mode toggle + structure selection.
+      if (e.key.toLowerCase() === 'b') {
+        const mustHaveHammer = typeof window !== 'undefined' ? window.__hasHammerRef : false;
+        if (mustHaveHammer) buildModeRef.current.active = !buildModeRef.current.active;
+      }
+      if (buildModeRef.current.active && e.key >= '1' && e.key <= '6') {
+        buildModeRef.current.kind = BUILD_ORDER[Number(e.key) - 1];
+        buildModeRef.current.rot = 0;
+      }
+      if (buildModeRef.current.active && e.key.toLowerCase() === 'r') {
+        buildModeRef.current.rot = (buildModeRef.current.rot + 90) % 360;
+      }
+      // RAFT-209: cycle material tier (wood -> reinforced -> metal).
+      if (buildModeRef.current.active && e.key.toLowerCase() === 't') {
+        const i = MATERIAL_ORDER.indexOf(buildModeRef.current.material);
+        buildModeRef.current.material = MATERIAL_ORDER[(i + 1) % MATERIAL_ORDER.length];
+      }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft') keys.ArrowLeft = false;
@@ -613,6 +705,7 @@ export default function Game({ onStatsUpdate, craftAction, onCraftComplete, raft
     let animationFrameId: number;
     let lastStatsUpdate = 0;
     let invulnerabilityTimer = 0;
+    let sinkTimer = 0; // RAFT-206
     let lightningTimer = 0;
     let lightningFlash = 0;
     let lightningBolt: { x: number; y: number; life: number; } | null = null;
@@ -939,12 +1032,12 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
           statsRef.current.hunger = Math.min(100, statsRef.current.hunger + 40);
           bumpAch('totalFishEaten'); // RAFT-004
           playEatSound();
-          onStatsUpdate({ ...statsRef.current });
+          onStatsUpdate(statsPayload());
         }
       };
-      window.__drinkWaterFromGame = () => { if (barrelWater >= 30 && statsRef.current.thirst < 100) { barrelWater -= 30; statsRef.current.thirst = Math.min(100, statsRef.current.thirst + 40); window.__barrelWater = barrelWater; onStatsUpdate({ ...statsRef.current }); } };
-      window.__cookFish = () => { console.log('[COOK] clicked, hasFire=' + window.__hasCampfireRef + ' fish=' + statsRef.current.fish); const hasFire = window.__hasCampfireRef; if (hasFire && statsRef.current.fish > 0 && cookingTimer <= 0) { statsRef.current.fish -= 1; cookedFish += 1; cookingTimer = 180; onStatsUpdate({ ...statsRef.current }); } };
-      window.__eatCookedFish = () => { console.log('[EAT COOKED] clicked, cookedFish=' + cookedFish); if (cookedFish > 0) { cookedFish -= 1; statsRef.current.hunger = Math.min(100, statsRef.current.hunger + 60); bumpAch('totalFishEaten'); onStatsUpdate({ ...statsRef.current }); } };
+      window.__drinkWaterFromGame = () => { if (barrelWater >= 30 && statsRef.current.thirst < 100) { barrelWater -= 30; statsRef.current.thirst = Math.min(100, statsRef.current.thirst + 40); window.__barrelWater = barrelWater; onStatsUpdate(statsPayload()); } };
+      window.__cookFish = () => { console.log('[COOK] clicked, hasFire=' + window.__hasCampfireRef + ' fish=' + statsRef.current.fish); const hasFire = window.__hasCampfireRef; if (hasFire && statsRef.current.fish > 0 && cookingTimer <= 0) { statsRef.current.fish -= 1; cookedFish += 1; cookingTimer = 180; onStatsUpdate(statsPayload()); } };
+      window.__eatCookedFish = () => { console.log('[EAT COOKED] clicked, cookedFish=' + cookedFish); if (cookedFish > 0) { cookedFish -= 1; statsRef.current.hunger = Math.min(100, statsRef.current.hunger + 60); bumpAch('totalFishEaten'); onStatsUpdate(statsPayload()); } };
     }
 
     // RAFT-006/007: live snapshot the page reads to save/autosave the run.
@@ -974,8 +1067,134 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         floors: window.__floorsRef ?? 0,
         barrelWater,
         spearTier: spearTierRef.current,
+        buildGrid: toStored(buildGridRef.current),
       };
     };
+
+    // RAFT-201..209: grid <-> world helpers, build-mode mouse handling.
+    const deckMetrics = () => {
+      const cols = Math.max(2, Math.round(raftRef.current.width / TILE_SIZE));
+      const rows = Math.max(2, Math.round(raftRef.current.height / TILE_SIZE));
+      return { left: raftRef.current.x, top: getRaftScreenY(), cols, rows };
+    };
+    const worldToCell = (wx: number, wy: number) => {
+      const m = deckMetrics();
+      return { col: Math.floor((wx - m.left) / TILE_SIZE), row: Math.floor((wy - m.top) / TILE_SIZE) };
+    };
+    const cellToWorld = (col: number, row: number) => {
+      const m = deckMetrics();
+      return { x: m.left + col * TILE_SIZE, y: m.top + row * TILE_SIZE };
+    };
+    const placementCtx = () => {
+      const m = deckMetrics();
+      return {
+        minCol: 0, maxCol: m.cols - 1, minRow: 0, maxRow: m.rows - 1,
+        wallAllowed: (col: number, row: number) => col === 0 || col === m.cols - 1 || row === 0 || row === m.rows - 1,
+      };
+    };
+    // RAFT-209: full wood + upgrade cost for a structure at a material tier.
+    const costFor = (kind: StructureKind, material: MaterialTier) => {
+      const base = STRUCTURE_COST[kind];
+      const up = material === 'wood' ? { wood: 0, plastic: 0 } : MATERIAL_UPGRADE_COST[material as Exclude<MaterialTier, 'wood'>];
+      return { wood: base.wood + up.wood, plastic: base.plastic + up.plastic };
+    };
+    // RAFT-202/209: a cell is buildable if empty (place) or holds a lower-tier
+    // structure of the same kind (upgrade).
+    const cellAction = (col: number, row: number): 'place' | 'upgrade' | 'invalid' => {
+      const kind = buildModeRef.current.kind;
+      const sel = buildModeRef.current.material;
+      const existing = findTile(buildGridRef.current, col, row);
+      if (existing) {
+        const canUpgrade = existing.kind === kind && MATERIAL_ORDER.indexOf(sel) > MATERIAL_ORDER.indexOf(existing.material);
+        return canUpgrade ? 'upgrade' : 'invalid';
+      }
+      return canPlace(buildGridRef.current, col, row, kind, placementCtx()).ok ? 'place' : 'invalid';
+    };
+    const statsPayload = () => {
+      const g = buildGridRef.current;
+      return {
+        ...statsRef.current,
+        raftSize: raftRef.current.height,
+        capacity: STORAGE_CAP_BASE + countKind(g, 'crate') * CRATE_CAPACITY,
+        damaged: statsRef.current.raftHealth < MAX_RAFT_HEALTH || g.tiles.some((t) => t.hp < t.maxHp),
+        walls: countKind(g, 'wall'),
+        roofs: countKind(g, 'roof'),
+        floors: countKind(g, 'floor'),
+      };
+    };
+    const pushBuildCounts = () => {
+      const g = buildGridRef.current;
+      if (typeof window !== 'undefined') {
+        window.__wallsRef = countKind(g, 'wall');
+        window.__roofsRef = countKind(g, 'roof');
+        window.__floorsRef = countKind(g, 'floor');
+      }
+      onStatsUpdate(statsPayload());
+    };
+    const tryPlace = (col: number, row: number) => {
+      const kind = buildModeRef.current.kind;
+      const material = buildModeRef.current.material;
+      const action = cellAction(col, row);
+      if (action === 'invalid') return;
+      if (action === 'upgrade') {
+        // RAFT-209: upgrade an existing structure in place (pays only the tier cost).
+        const up = MATERIAL_UPGRADE_COST[material as Exclude<MaterialTier, 'wood'>];
+        if (statsRef.current.wood < up.wood || statsRef.current.plastic < up.plastic) return;
+        statsRef.current.wood -= up.wood;
+        statsRef.current.plastic -= up.plastic;
+        buildGridRef.current = upgradeTile(buildGridRef.current, col, row, material);
+      } else {
+        const cost = costFor(kind, material);
+        if (statsRef.current.wood < cost.wood || statsRef.current.plastic < cost.plastic) return;
+        statsRef.current.wood -= cost.wood;
+        statsRef.current.plastic -= cost.plastic;
+        buildGridRef.current = placeTile(buildGridRef.current, col, row, kind, material, buildModeRef.current.rot);
+      }
+      if (kind === 'wall') bumpAch('builtWalls');
+      if (kind === 'roof') bumpAch('builtRoof');
+      playChopSound();
+      pushBuildCounts();
+    };
+    const tryRemove = (col: number, row: number) => {
+      const res = removeTile(buildGridRef.current, col, row);
+      if (res.refund.wood === 0 && res.refund.plastic === 0 && findTile(buildGridRef.current, col, row) === undefined) return;
+      buildGridRef.current = res.grid;
+      statsRef.current.wood += res.refund.wood;
+      statsRef.current.plastic += res.refund.plastic;
+      playChopSound();
+      pushBuildCounts();
+    };
+    const toCanvasCoords = (clientX: number, clientY: number) => {
+      const canvasEl = canvasRef.current;
+      if (!canvasEl) return { x: 0, y: 0 };
+      const rect = canvasEl.getBoundingClientRect();
+      const sx = rect.width / 800;
+      const sy = rect.height / 600;
+      return { x: (clientX - rect.left) / (sx || 1), y: (clientY - rect.top) / (sy || 1) };
+    };
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!buildModeRef.current.active) return;
+      const p = toCanvasCoords(e.clientX, e.clientY);
+      const c = worldToCell(p.x, p.y);
+      buildModeRef.current.col = c.col;
+      buildModeRef.current.row = c.row;
+      buildModeRef.current.valid = cellAction(c.col, c.row) !== 'invalid';
+    };
+    const handleMouseDown = (e: MouseEvent) => {
+      if (!buildModeRef.current.active) return;
+      // Ignore clicks that land on HUD/menu overlays — only the canvas places.
+      if (e.target !== canvasRef.current) return;
+      const p = toCanvasCoords(e.clientX, e.clientY);
+      const c = worldToCell(p.x, p.y);
+      if (e.button === 2) tryRemove(c.col, c.row);
+      else tryPlace(c.col, c.row);
+    };
+    const handleContextMenu = (e: MouseEvent) => {
+      if (buildModeRef.current.active) e.preventDefault();
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('contextmenu', handleContextMenu);
 
     // RAFT-103: XP sink. Currently only logs in debug mode; Phase 3 wires the
     // real progression system through window.__onXpFromGame.
@@ -999,17 +1218,11 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         lootDrops.push({ x, y, type: drop.type, amount: drop.amount, life: 60, vy: -0.9 - Math.random() * 0.4 });
       }
       onXp(enemy === 'frog' ? 5 : enemy === 'shark' ? 20 : 100);
-      onStatsUpdate({ ...statsRef.current });
+      onStatsUpdate(statsPayload());
     };
 
-    // RAFT-110: keep one durability entry per built wall; intruders strike the
-    // first intact wall before the raft itself takes damage.
-    const syncWalls = () => {
-      const target = (typeof window !== 'undefined' ? window.__wallsRef : 0) || 0;
-      while (wallHp.length < target) wallHp.push(WALL_HP);
-      if (wallHp.length > target) wallHp.length = target;
-    };
-    const intactWalls = () => wallHp.filter((hp) => hp > 0).length;
+    // RAFT-204: count intact grid walls (structures are the source of truth).
+    const intactWalls = () => buildGridRef.current.tiles.filter((t) => t.kind === 'wall' && t.hp > 0).length;
 
     const update = () => {
       if (gameOver || paused) return;
@@ -1084,9 +1297,13 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       const raftDeltaX = raftScreenX - lastRaftX;
 
       // RAFT-111: difficulty drives the hunger/thirst drain rates.
-      statsRef.current.hunger -= 0.005 * DIFF.hungerRate;
+      // RAFT-203: an intact roof shelters the deck and negates weather strain.
+      const sheltered = hasShelter(buildGridRef.current);
+      const hungerWeather = sheltered ? 1 : weatherType === 'snow' ? WEATHER_SNOW_HUNGER : weatherType === 'rain' ? WEATHER_RAIN_DRAIN : 1;
+      const thirstWeather = sheltered ? 1 : weatherType === 'heat' ? WEATHER_HEAT_THIRST : weatherType === 'rain' ? WEATHER_RAIN_DRAIN : 1;
+      statsRef.current.hunger -= 0.005 * DIFF.hungerRate * hungerWeather;
       if (statsRef.current.hunger < 0) statsRef.current.hunger = 0;
-      statsRef.current.thirst -= 0.004 * DIFF.thirstRate;
+      statsRef.current.thirst -= 0.004 * DIFF.thirstRate * thirstWeather;
       if (statsRef.current.thirst < 0) statsRef.current.thirst = 0;
       if (statsRef.current.thirst === 0) {
         statsRef.current.health = applyDamage(statsRef.current.health, 0.003 * DIFF.damageMult);
@@ -1095,6 +1312,20 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         barrelWater = Math.min(100, barrelWater + 0.05);
         window.__barrelWater = barrelWater;
       }
+      // RAFT-208: water purifier slowly produces clean water.
+      if (countKind(buildGridRef.current, 'purifier') > 0 && barrelWater < 100 && time % PURIFIER_PERIOD === 0) {
+        barrelWater = Math.min(100, barrelWater + 1);
+        window.__barrelWater = barrelWater;
+      }
+      // RAFT-208: fish drying rack cures a raw fish into food over time.
+      if (countKind(buildGridRef.current, 'dryingrack') > 0 && statsRef.current.fish > 0 && time % DRYING_RACK_PERIOD === 0) {
+        statsRef.current.fish -= 1;
+        cookedFish += 1;
+      }
+      // RAFT-208: storage crates raise the wood/plastic cap.
+      const storageCap = STORAGE_CAP_BASE + countKind(buildGridRef.current, 'crate') * CRATE_CAPACITY;
+      if (statsRef.current.wood > storageCap) statsRef.current.wood = storageCap;
+      if (statsRef.current.plastic > storageCap) statsRef.current.plastic = storageCap;
       if (statsRef.current.hunger === 0) {
         statsRef.current.health = applyDamage(statsRef.current.health, 0.003 * DIFF.damageMult);
       }
@@ -1116,7 +1347,33 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
       const day = statsRef.current.day;
       const scale = threatScale(day);
       const enemyDamageMult = DIFF.damageMult * scale.damageMult;
-      syncWalls(); // RAFT-110: track built walls' durability
+      // Keep the HUD bridge counts in sync with the grid (no React setState here).
+      if (typeof window !== 'undefined') {
+        const g = buildGridRef.current;
+        window.__wallsRef = countKind(g, 'wall');
+        window.__roofsRef = countKind(g, 'roof');
+        window.__floorsRef = countKind(g, 'floor');
+      }
+      // RAFT-203: an intact roof shelters the deck — small passive health regen.
+      if (sheltered) {
+        statsRef.current.health = applyHeal(statsRef.current.health, ROOF_REGEN_BONUS);
+      }
+
+      // RAFT-206: raft integrity at 0 starts a sinking sequence — warning, then
+      // structures are torn off one by one, then game over.
+      if (statsRef.current.raftHealth <= 0) {
+        sinkTimer++;
+        if (sinkTimer === 1) window.__chestMessage = { text: 'THE RAFT IS SINKING!', time: 300 };
+        if (sinkTimer > SINK_WARNING_FRAMES && sinkTimer % SINK_TILE_LOSS_INTERVAL === 0) {
+          const tiles = buildGridRef.current.tiles;
+          if (tiles.length > 0) {
+            buildGridRef.current = { tiles: tiles.slice(0, -1), nextId: buildGridRef.current.nextId };
+          }
+        }
+        if (sinkTimer > SINK_WARNING_FRAMES + SINK_TILE_LOSS_INTERVAL * 8) { onGameOver(); return; }
+      } else {
+        sinkTimer = 0;
+      }
 
       // KRAKEN UPDATE
       krakenTimer++;
@@ -1515,9 +1772,8 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
               const safeRight = raftRef.current.x + raftRef.current.width * 0.70;
               const inSafeMiddle = playerCX >= safeLeft && playerCX <= safeRight;
               if (intactWalls() > 0) {
-                // RAFT-110: an intact wall absorbs the bite instead of the player.
-                const wi = wallHp.findIndex((hp) => hp > 0);
-                if (wi >= 0) wallHp[wi] -= SHARK_RAFT_DAMAGE;
+                // RAFT-204/110: an intact wall absorbs the bite (and loses HP).
+                buildGridRef.current = damageFirstOfKind(buildGridRef.current, 'wall', SHARK_RAFT_DAMAGE);
               } else if (isInWater || !inSafeMiddle) {
                 statsRef.current.health = applyDamage(statsRef.current.health, SHARK_BITE_DAMAGE * enemyDamageMult);
                 spawnDamageNumber(playerCX, player.y, Math.round(SHARK_BITE_DAMAGE * enemyDamageMult * 10) / 10, '#FF6B6B');
@@ -1889,7 +2145,7 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         if (item.y > 640) items.splice(i, 1);
       }
 
-      if (time - lastStatsUpdate > 10) { onStatsUpdate({ ...statsRef.current }); lastStatsUpdate = time; }
+      if (time - lastStatsUpdate > 10) { onStatsUpdate(statsPayload()); lastStatsUpdate = time; }
     };
 
     const drawChest = (ch: TreasureChest) => {
@@ -3582,6 +3838,44 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
         drawEnemyHealthBar(shark.x, shark.y - 12, shark.width, shark.health, shark.maxHealth, '#E74C3C');
       }
 
+      // RAFT-201/202: draw placed structures + the build-mode ghost preview.
+      for (const t of buildGridRef.current.tiles) {
+        const w = cellToWorld(t.col, t.row);
+        ctx.globalAlpha = 0.35 + 0.65 * (t.hp / t.maxHp);
+        if (t.kind === 'wall') {
+          ctx.fillStyle = '#A9702F';
+          ctx.fillRect(w.x + 3, w.y + 3, TILE_SIZE - 6, TILE_SIZE - 6);
+          ctx.strokeStyle = '#6B4419'; ctx.lineWidth = 2;
+          ctx.strokeRect(w.x + 3, w.y + 3, TILE_SIZE - 6, TILE_SIZE - 6);
+        } else if (t.kind === 'floor') {
+          ctx.fillStyle = '#C08040';
+          ctx.fillRect(w.x, w.y, TILE_SIZE, TILE_SIZE);
+          ctx.strokeStyle = '#8B5A2B'; ctx.lineWidth = 1;
+          ctx.strokeRect(w.x, w.y, TILE_SIZE, TILE_SIZE);
+        } else if (t.kind === 'roof') {
+          ctx.fillStyle = 'rgba(22,160,133,0.45)';
+          ctx.fillRect(w.x, w.y, TILE_SIZE, TILE_SIZE);
+          ctx.strokeStyle = '#117864'; ctx.lineWidth = 1;
+          ctx.strokeRect(w.x, w.y, TILE_SIZE, TILE_SIZE);
+        } else {
+          ctx.font = '22px serif';
+          ctx.fillText(t.kind === 'crate' ? '📦' : t.kind === 'dryingrack' ? '🍖' : '💧', w.x + 8, w.y + 28);
+        }
+        ctx.globalAlpha = 1;
+      }
+      const bm = buildModeRef.current;
+      if (bm.active) {
+        const w = cellToWorld(bm.col, bm.row);
+        ctx.globalAlpha = 0.45;
+        ctx.fillStyle = bm.valid ? 'rgba(46,204,113,0.9)' : 'rgba(231,76,60,0.9)';
+        ctx.fillRect(w.x, w.y, TILE_SIZE, TILE_SIZE);
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = bm.valid ? '#2ECC71' : '#E74C3C'; ctx.lineWidth = 2;
+        ctx.strokeRect(w.x, w.y, TILE_SIZE, TILE_SIZE);
+        ctx.fillStyle = '#FFF'; ctx.font = '8px "Press Start 2P", monospace';
+        ctx.fillText(bm.kind.toUpperCase(), w.x, w.y - 4);
+      }
+
       // RAFT-102: F3 debug overlay — attack arc + enemy hitboxes.
       if (typeof window !== 'undefined' && window.__debugHitboxes) {
         ctx.lineWidth = 1;
@@ -3600,7 +3894,14 @@ for (let i = 0; i < 30; i++) waveStreaks.push(createWaveStreak());
 
     const gameLoop = () => { update(); draw(); animationFrameId = requestAnimationFrame(gameLoop); };
     gameLoop();
-    return () => { cancelAnimationFrame(animationFrameId); window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('keyup', handleKeyUp); };
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('contextmenu', handleContextMenu);
+    };
   }, [onStatsUpdate, gameOver, onGameOver]);
   // Note: walls/roofs/floors/hasHammer are used in draw, see second effect below
 

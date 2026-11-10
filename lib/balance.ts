@@ -53,6 +53,76 @@ export const WALL_HP = 30;
 // Vertical band (px above the raft surface) where a wall intercepts shots.
 export const WALL_BLOCK_HEIGHT = 70;
 
+// ===== Buildable structures (RAFT-201..209) =====
+export type StructureKind = 'wall' | 'floor' | 'roof' | 'crate' | 'dryingrack' | 'purifier';
+export type MaterialTier = 'wood' | 'reinforced' | 'metal';
+
+// Grid cell size in world px (RAFT-201).
+export const TILE_SIZE = 40;
+
+export const STRUCTURE_HP: Record<StructureKind, number> = {
+  wall: WALL_HP,
+  floor: 40,
+  roof: 25,
+  crate: 24,
+  dryingrack: 20,
+  purifier: 20,
+};
+
+export const STRUCTURE_COST: Record<StructureKind, { wood: number; plastic: number }> = {
+  wall: { wood: 5, plastic: 0 },
+  floor: { wood: 4, plastic: 0 },
+  roof: { wood: 3, plastic: 2 },
+  crate: { wood: 10, plastic: 4 },
+  dryingrack: { wood: 8, plastic: 3 },
+  purifier: { wood: 12, plastic: 8 },
+};
+
+// RAFT-202: removing a placed structure refunds half of its cost.
+export const STRUCTURE_REFUND = 0.5;
+
+// RAFT-209: material tiers so wood never becomes worthless. Upgrading a
+// structure raises its HP; the tier costs are paid on top of the base cost.
+export const MATERIAL_HP_MULT: Record<MaterialTier, number> = {
+  wood: 1,
+  reinforced: 1.6,
+  metal: 2.5,
+};
+export const MATERIAL_UPGRADE_COST: Record<Exclude<MaterialTier, 'wood'>, { wood: number; plastic: number }> = {
+  reinforced: { wood: 6, plastic: 4 },
+  metal: { wood: 10, plastic: 12 },
+};
+
+// Order matters: index doubles as a tier rank for upgrades (RAFT-209).
+export const MATERIAL_ORDER: MaterialTier[] = ['wood', 'reinforced', 'metal'];
+
+// Per-structure gameplay effects.
+export const ROOF_REGEN_BONUS = 0.02; // hp/frame regen while sheltered (RAFT-203)
+export const CRATE_CAPACITY = 40; // extra wood/plastic storage per crate (RAFT-208)
+export const STORAGE_CAP_BASE = 100; // base storage cap before any crates (RAFT-208)
+export const DRYING_RACK_PERIOD = 1200; // frames per dried fish (~20s) (RAFT-208)
+export const PURIFIER_PERIOD = 1800; // frames per clean water (~30s) (RAFT-208)
+
+// Raft sinking (RAFT-206).
+export const SINK_WARNING_FRAMES = 300; // 5s countdown before tiles are lost
+export const SINK_TILE_LOSS_INTERVAL = 40; // frames between tile losses during sinking
+
+// RAFT-205: repairing the raft restores integrity and patches structures.
+export const RAFT_REPAIR_COST = { wood: 5, plastic: 0 };
+export const RAFT_REPAIR_AMOUNT = 25;
+
+// RAFT-207: expanding the deck — each expansion costs more than the last.
+export const BASE_RAFT_HEIGHT = 150; // starting deck length in world px
+export const EXPAND_COST_BASE = { wood: 10, plastic: 5 };
+export const EXPAND_COST_STEP = { wood: 5, plastic: 3 };
+export const EXPAND_SIZE = 40;
+
+// RAFT-203: weather strain (extra drain multiplier) vs. shelter mitigation.
+export const WEATHER_HEAT_THIRST = 1.8; // heat drains thirst faster
+export const WEATHER_SNOW_HUNGER = 1.8; // cold drains hunger faster
+export const WEATHER_RAIN_DRAIN = 1.3; // rain is a mild drain on both
+
+
 // ===== Weapon tiers (RAFT-106) =====
 export type WeaponTier = 'wooden' | 'stone' | 'reinforced';
 export const WEAPON_TIERS: Record<WeaponTier, { name: string; damage: number; cooldown: number; wood: number; plastic: number }> = {

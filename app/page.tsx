@@ -14,7 +14,7 @@ import CraftingMenu from '@/components/CraftingMenu';
 import GameOver from '@/components/GameOver';
 import BackgroundMusic from '@/components/BackgroundMusic';
 import { loadSnapshot, saveSnapshot, hasSnapshot, type GameSnapshot, type SnapshotStore } from '@/lib/save';
-import { nextWeaponTier, type WeaponTier } from '@/lib/balance';
+import { nextWeaponTier, BASE_RAFT_HEIGHT, EXPAND_SIZE, type WeaponTier } from '@/lib/balance';
 
 export default function Home() {
   const [scene, setScene] = useState<'menu' | 'playing' | 'settings' | 'credits' | 'coop' | 'achievements'>('menu');
@@ -36,6 +36,8 @@ export default function Home() {
   const [walls, setWalls] = useState(0);
   const [roofs, setRoofs] = useState(0);
   const [floors, setFloors] = useState(0);
+  const [storageCap, setStorageCap] = useState(100);
+  const [needsRepair, setNeedsRepair] = useState(false);
   const [isCraftingOpen, setIsCraftingOpen] = useState(false);
   const [isRecipeBookOpen, setIsRecipeBookOpen] = useState(false);
   const [craftAction, setCraftAction] = useState<{ type: string; id: number } | null>(null);
@@ -127,7 +129,7 @@ export default function Home() {
 
   // Raft expansion (handled directly in handleCraft to avoid a state-sync effect)
 
-  const handleStatsUpdate = useCallback((stats: { health: number; hunger: number; thirst: number; fish: number; day: number; wood: number; plastic: number; raftHealth: number }) => {
+  const handleStatsUpdate = useCallback((stats: { health: number; hunger: number; thirst: number; fish: number; day: number; wood: number; plastic: number; raftHealth: number; walls?: number; roofs?: number; floors?: number; raftSize?: number; capacity?: number; damaged?: boolean }) => {
     setHealth(stats.health);
     setHunger(stats.hunger);
     setThirst(stats.thirst ?? 100);
@@ -136,6 +138,13 @@ export default function Home() {
     setWood(stats.wood);
     setPlastic(stats.plastic);
     setRaftHealth(stats.raftHealth ?? 100);
+    // RAFT-207: the game owns deck size; mirror it so the craft menu shows cost.
+    if (typeof stats.raftSize === 'number') setRaftWidth(stats.raftSize);
+    if (typeof stats.capacity === 'number') setStorageCap(stats.capacity);
+    if (typeof stats.walls === 'number') setWalls(stats.walls);
+    if (typeof stats.roofs === 'number') setRoofs(stats.roofs);
+    if (typeof stats.floors === 'number') setFloors(stats.floors);
+    if (typeof stats.damaged === 'boolean') setNeedsRepair(stats.damaged);
   }, []);
 
   const handleCraft = (type: string) => {
@@ -145,14 +154,15 @@ export default function Home() {
     if (type === 'RAIN_BARREL') setHasRainBarrel(true);
     if (type === 'CAMPFIRE') setHasCampfire(true);
     if (type === 'SPEAR_UPGRADE') setSpearTier(prev => nextWeaponTier(prev) ?? prev);
-    if (type === 'WALL') setWalls(prev => Math.min(prev + 1, 4));
-    if (type === 'ROOF') setRoofs(prev => Math.min(prev + 1, 1));
-    if (type === 'FLOOR') setFloors(prev => Math.min(prev + 1, 2));
-    if (type === 'EXPAND') setRaftWidth(prev => prev + 40);
+    // RAFT-201/202: building now happens in-game (Build Mode, key B); the game
+    // owns resource deduction, deck size and grid state for REPAIR/EXPAND.
     setCraftAction({ type, id: Date.now() });
   };
 
   const handleCraftComplete = useCallback(() => setCraftAction(null), []);
+
+  // RAFT-207: how many expansions have been bought (drives the EXPAND cost).
+  const expansions = Math.max(0, Math.round((raftWidth - BASE_RAFT_HEIGHT) / EXPAND_SIZE));
 
   const handleCook = () => { window.__cookFish?.(); };
   const handleEatCooked = () => { window.__eatCookedFish?.(); };
@@ -351,6 +361,7 @@ export default function Home() {
             hasRainBarrel={hasRainBarrel}
             barrelWater={barrelWater}
             raftHealth={raftHealth}
+            storageCap={storageCap}
             playerState={playerState}
             onPoseChange={setPlayerState}
             onMainMenu={() => { setScene('menu'); setIsCraftingOpen(false); setIsRecipeBookOpen(false); }}
@@ -373,6 +384,9 @@ export default function Home() {
               roofs={roofs}
               floors={floors}
               spearTier={spearTier}
+              needsRepair={needsRepair}
+              expansions={expansions}
+              capacity={storageCap}
             />
           )}
           {gameOver && <GameOver onRespawn={handleRespawn} onSaveAndQuit={handleSaveAndQuit} />}

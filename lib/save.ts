@@ -7,8 +7,9 @@
 // crash the game on boot.
 
 import type { WeaponTier } from '@/lib/balance';
+import type { StoredTile } from '@/lib/systems/raft';
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 export const SAVE_KEY = 'raftSave';
 
 export type GameSnapshot = {
@@ -37,6 +38,8 @@ export type GameSnapshot = {
   barrelWater: number;
   /** Current spear tier (RAFT-106). */
   spearTier: WeaponTier;
+  /** Placed build tiles (RAFT-201). Empty for saves made before Phase 2. */
+  buildGrid: StoredTile[];
 };
 
 /** Mutable box shared between <Game> and the page so a save can read live state. */
@@ -66,6 +69,7 @@ export const DEFAULT_SNAPSHOT: GameSnapshot = {
   floors: 0,
   barrelWater: 0,
   spearTier: 'wooden',
+  buildGrid: [],
 };
 
 const asNumber = (v: unknown, fallback: number): number =>
@@ -103,6 +107,7 @@ export function normalizeSnapshot(raw: unknown): GameSnapshot {
     floors: asNumber(r.floors, DEFAULT_SNAPSHOT.floors),
     barrelWater: asNumber(r.barrelWater, DEFAULT_SNAPSHOT.barrelWater),
     spearTier: asTier(r.spearTier, DEFAULT_SNAPSHOT.spearTier),
+    buildGrid: Array.isArray(r.buildGrid) ? (r.buildGrid as StoredTile[]) : [],
   };
 }
 
