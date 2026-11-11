@@ -34,7 +34,10 @@ export default function AchievementsPanel({ onClose }: AchievementsPanelProps) {
           ACHIEVEMENTS
         </h2>
 
-        <div className="text-center text-[#5D4037] text-[10px] mb-4" style={{ fontFamily: '"Press Start 2P", monospace' }}>
+        <div
+          className="text-center text-[#5D4037] text-[10px] mb-4"
+          style={{ fontFamily: '"Press Start 2P", monospace' }}
+        >
           {unlocked.length} / {ACHIEVEMENTS.length} UNLOCKED
         </div>
 

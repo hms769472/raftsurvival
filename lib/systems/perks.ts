@@ -27,17 +27,65 @@ export const PERK_BRANCHES: { id: PerkBranch; name: string; blurb: string }[] = 
 
 export const PERKS: PerkDef[] = [
   // Survivor
-  { id: 's_hardy', branch: 'survivor', name: 'Hardy', desc: '-8% hunger drain per rank', maxRank: 3 },
-  { id: 's_hydrated', branch: 'survivor', name: 'Hydrated', desc: '-8% thirst drain per rank', maxRank: 3 },
-  { id: 's_regen', branch: 'survivor', name: 'Resilience', desc: '+0.01 hp/frame regen per rank', maxRank: 3 },
+  {
+    id: 's_hardy',
+    branch: 'survivor',
+    name: 'Hardy',
+    desc: '-8% hunger drain per rank',
+    maxRank: 3,
+  },
+  {
+    id: 's_hydrated',
+    branch: 'survivor',
+    name: 'Hydrated',
+    desc: '-8% thirst drain per rank',
+    maxRank: 3,
+  },
+  {
+    id: 's_regen',
+    branch: 'survivor',
+    name: 'Resilience',
+    desc: '+0.01 hp/frame regen per rank',
+    maxRank: 3,
+  },
   // Fighter
-  { id: 'f_might', branch: 'fighter', name: 'Might', desc: '+15% spear damage per rank', maxRank: 3 },
+  {
+    id: 'f_might',
+    branch: 'fighter',
+    name: 'Might',
+    desc: '+15% spear damage per rank',
+    maxRank: 3,
+  },
   { id: 'f_vigor', branch: 'fighter', name: 'Vigor', desc: '+0.5 max heart per rank', maxRank: 3 },
-  { id: 'f_swift', branch: 'fighter', name: 'Swift', desc: '-10% attack cooldown per rank', maxRank: 3 },
+  {
+    id: 'f_swift',
+    branch: 'fighter',
+    name: 'Swift',
+    desc: '-10% attack cooldown per rank',
+    maxRank: 3,
+  },
   // Builder
-  { id: 'b_thrift', branch: 'builder', name: 'Thrift', desc: '-8% structure cost per rank', maxRank: 3 },
-  { id: 'b_sturdy', branch: 'builder', name: 'Sturdy', desc: '+20% structure HP per rank', maxRank: 3 },
-  { id: 'b_shelter', branch: 'builder', name: 'Shelter', desc: '+0.01 roof regen per rank', maxRank: 3 },
+  {
+    id: 'b_thrift',
+    branch: 'builder',
+    name: 'Thrift',
+    desc: '-8% structure cost per rank',
+    maxRank: 3,
+  },
+  {
+    id: 'b_sturdy',
+    branch: 'builder',
+    name: 'Sturdy',
+    desc: '+20% structure HP per rank',
+    maxRank: 3,
+  },
+  {
+    id: 'b_shelter',
+    branch: 'builder',
+    name: 'Shelter',
+    desc: '+0.01 roof regen per rank',
+    maxRank: 3,
+  },
 ];
 
 export type PerkEffects = {

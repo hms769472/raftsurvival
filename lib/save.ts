@@ -8,7 +8,11 @@
 
 import type { WeaponTier } from '@/lib/balance';
 import type { StoredTile } from '@/lib/systems/raft';
-import { DEFAULT_PROGRESSION, normalizeProgression, type ProgressionState } from '@/lib/systems/progression';
+import {
+  DEFAULT_PROGRESSION,
+  normalizeProgression,
+  type ProgressionState,
+} from '@/lib/systems/progression';
 import { normalizePerkRanks, type PerkRanks } from '@/lib/systems/perks';
 
 export const SAVE_VERSION = 6;
@@ -94,8 +98,7 @@ export const DEFAULT_SNAPSHOT: GameSnapshot = {
 
 const asNumber = (v: unknown, fallback: number): number =>
   typeof v === 'number' && Number.isFinite(v) ? v : fallback;
-const asBool = (v: unknown, fallback: boolean): boolean =>
-  typeof v === 'boolean' ? v : fallback;
+const asBool = (v: unknown, fallback: boolean): boolean => (typeof v === 'boolean' ? v : fallback);
 const asTier = (v: unknown, fallback: WeaponTier): WeaponTier =>
   v === 'wooden' || v === 'stone' || v === 'reinforced' ? v : fallback;
 
@@ -149,7 +152,10 @@ export function loadSnapshot(slot = 0): GameSnapshot | null {
 export function saveSnapshot(snap: GameSnapshot, slot = 0): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(slotKey(slot), JSON.stringify({ ...snap, version: SAVE_VERSION, savedAt: Date.now() }));
+    localStorage.setItem(
+      slotKey(slot),
+      JSON.stringify({ ...snap, version: SAVE_VERSION, savedAt: Date.now() }),
+    );
   } catch {
     /* storage full / disabled — never crash the game */
   }

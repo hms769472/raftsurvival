@@ -79,12 +79,15 @@ export default function SettingsMenu({ onClose, onReplayTutorial }: SettingsMenu
       setListening(null);
     };
     window.addEventListener('keydown', handler, { capture: true });
-    return () => window.removeEventListener('keydown', handler, { capture: true } as EventListenerOptions);
+    return () =>
+      window.removeEventListener('keydown', handler, { capture: true } as EventListenerOptions);
   }, [listening, bindings]);
 
   const toggleBtn = (active: boolean) =>
     'w-14 h-8 rounded-full border-2 transition-all flex items-center px-1 ' +
-    (active ? 'bg-green-500 border-green-700 justify-end' : 'bg-gray-500 border-gray-700 justify-start');
+    (active
+      ? 'bg-green-500 border-green-700 justify-end'
+      : 'bg-gray-500 border-gray-700 justify-start');
 
   const knob = 'w-6 h-6 rounded-full bg-white shadow-md';
 
@@ -109,7 +112,10 @@ export default function SettingsMenu({ onClose, onReplayTutorial }: SettingsMenu
         <div className="flex flex-col gap-4">
           {/* Music Toggle */}
           <div className="flex items-center justify-between bg-[#F5DEB3] border-2 border-[#8B4513] rounded p-3">
-            <span className="text-[#5D4037] text-[10px]" style={{ fontFamily: '"Press Start 2P", monospace' }}>
+            <span
+              className="text-[#5D4037] text-[10px]"
+              style={{ fontFamily: '"Press Start 2P", monospace' }}
+            >
               MUSIC
             </span>
             <button onClick={() => setMusicOn(!musicOn)} className={toggleBtn(musicOn)}>
@@ -119,7 +125,10 @@ export default function SettingsMenu({ onClose, onReplayTutorial }: SettingsMenu
 
           {/* SFX Toggle */}
           <div className="flex items-center justify-between bg-[#F5DEB3] border-2 border-[#8B4513] rounded p-3">
-            <span className="text-[#5D4037] text-[10px]" style={{ fontFamily: '"Press Start 2P", monospace' }}>
+            <span
+              className="text-[#5D4037] text-[10px]"
+              style={{ fontFamily: '"Press Start 2P", monospace' }}
+            >
               SOUND FX
             </span>
             <button onClick={() => setSfxOn(!sfxOn)} className={toggleBtn(sfxOn)}>
@@ -129,7 +138,10 @@ export default function SettingsMenu({ onClose, onReplayTutorial }: SettingsMenu
 
           {/* Show FPS Toggle */}
           <div className="flex items-center justify-between bg-[#F5DEB3] border-2 border-[#8B4513] rounded p-3">
-            <span className="text-[#5D4037] text-[10px]" style={{ fontFamily: '"Press Start 2P", monospace' }}>
+            <span
+              className="text-[#5D4037] text-[10px]"
+              style={{ fontFamily: '"Press Start 2P", monospace' }}
+            >
               SHOW FPS
             </span>
             <button onClick={() => setShowFps(!showFps)} className={toggleBtn(showFps)}>
@@ -139,17 +151,29 @@ export default function SettingsMenu({ onClose, onReplayTutorial }: SettingsMenu
 
           {/* Difficulty */}
           <div className="bg-[#F5DEB3] border-2 border-[#8B4513] rounded p-3">
-            <div className="text-[#5D4037] text-[10px] mb-3 text-center" style={{ fontFamily: '"Press Start 2P", monospace' }}>
+            <div
+              className="text-[#5D4037] text-[10px] mb-3 text-center"
+              style={{ fontFamily: '"Press Start 2P", monospace' }}
+            >
               DIFFICULTY
             </div>
             <div className="flex gap-2 justify-center">
-              <button onClick={() => setDifficulty('easy')} className={diffBtn('easy', 'bg-green-500 border-green-700')}>
+              <button
+                onClick={() => setDifficulty('easy')}
+                className={diffBtn('easy', 'bg-green-500 border-green-700')}
+              >
                 EASY
               </button>
-              <button onClick={() => setDifficulty('normal')} className={diffBtn('normal', 'bg-yellow-500 border-yellow-700')}>
+              <button
+                onClick={() => setDifficulty('normal')}
+                className={diffBtn('normal', 'bg-yellow-500 border-yellow-700')}
+              >
                 NORMAL
               </button>
-              <button onClick={() => setDifficulty('hard')} className={diffBtn('hard', 'bg-red-500 border-red-700')}>
+              <button
+                onClick={() => setDifficulty('hard')}
+                className={diffBtn('hard', 'bg-red-500 border-red-700')}
+              >
                 HARD
               </button>
             </div>
@@ -158,7 +182,10 @@ export default function SettingsMenu({ onClose, onReplayTutorial }: SettingsMenu
           {/* RAFT-503: rebindable controls */}
           <div className="bg-[#F5DEB3] border-2 border-[#8B4513] rounded p-3">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[#5D4037] text-[10px]" style={{ fontFamily: '"Press Start 2P", monospace' }}>
+              <span
+                className="text-[#5D4037] text-[10px]"
+                style={{ fontFamily: '"Press Start 2P", monospace' }}
+              >
                 CONTROLS
               </span>
               <button
@@ -177,7 +204,10 @@ export default function SettingsMenu({ onClose, onReplayTutorial }: SettingsMenu
             <div className="flex flex-col gap-1">
               {CONTROL_ACTIONS.map((action) => (
                 <div key={action} className="flex items-center justify-between">
-                  <span className="text-[8px] text-[#5D4037]" style={{ fontFamily: '"Press Start 2P", monospace' }}>
+                  <span
+                    className="text-[8px] text-[#5D4037]"
+                    style={{ fontFamily: '"Press Start 2P", monospace' }}
+                  >
                     {BINDING_LABELS[action]}
                   </span>
                   <button
@@ -195,7 +225,10 @@ export default function SettingsMenu({ onClose, onReplayTutorial }: SettingsMenu
                 </div>
               ))}
             </div>
-            <div className="text-[7px] text-[#5D4037] opacity-70 mt-2" style={{ fontFamily: '"Press Start 2P", monospace' }}>
+            <div
+              className="text-[7px] text-[#5D4037] opacity-70 mt-2"
+              style={{ fontFamily: '"Press Start 2P", monospace' }}
+            >
               WASD always moves. Arrow keys also work.
             </div>
           </div>
@@ -223,4 +256,3 @@ export default function SettingsMenu({ onClose, onReplayTutorial }: SettingsMenu
     </div>
   );
 }
-

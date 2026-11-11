@@ -112,7 +112,10 @@ export function removeTile(
     wood: Math.floor(cost.wood * STRUCTURE_REFUND),
     plastic: Math.floor(cost.plastic * STRUCTURE_REFUND),
   };
-  return { grid: { tiles: grid.tiles.filter((t) => t.id !== tile.id), nextId: grid.nextId }, refund };
+  return {
+    grid: { tiles: grid.tiles.filter((t) => t.id !== tile.id), nextId: grid.nextId },
+    refund,
+  };
 }
 
 /** Damages one tile; destroys it when HP reaches 0 (RAFT-204/110). */
@@ -121,7 +124,10 @@ export function damageTile(grid: BuildGrid, col: number, row: number, amount: nu
   if (!tile) return grid;
   const hp = tile.hp - Math.abs(amount);
   if (hp <= 0) return { tiles: grid.tiles.filter((t) => t.id !== tile.id), nextId: grid.nextId };
-  return { tiles: grid.tiles.map((t) => (t.id === tile.id ? { ...t, hp } : t)), nextId: grid.nextId };
+  return {
+    tiles: grid.tiles.map((t) => (t.id === tile.id ? { ...t, hp } : t)),
+    nextId: grid.nextId,
+  };
 }
 
 /** Damages the first intact tile of a kind (shark chews walls) (RAFT-110/204). */
@@ -153,7 +159,12 @@ export function hasShelter(grid: BuildGrid): boolean {
 }
 
 /** Upgrades a tile's material tier, raising HP (RAFT-209). */
-export function upgradeTile(grid: BuildGrid, col: number, row: number, material: MaterialTier): BuildGrid {
+export function upgradeTile(
+  grid: BuildGrid,
+  col: number,
+  row: number,
+  material: MaterialTier,
+): BuildGrid {
   const tile = findTile(grid, col, row);
   if (!tile) return grid;
   const maxHp = maxHpFor(tile.kind, material);
@@ -164,7 +175,14 @@ export function upgradeTile(grid: BuildGrid, col: number, row: number, material:
 }
 
 /** Serialised shape stored in the save file (kept small + version-free). */
-export type StoredTile = [col: number, row: number, kind: StructureKind, material: MaterialTier, hp: number, rot: number];
+export type StoredTile = [
+  col: number,
+  row: number,
+  kind: StructureKind,
+  material: MaterialTier,
+  hp: number,
+  rot: number,
+];
 
 export function toStored(grid: BuildGrid): StoredTile[] {
   return grid.tiles.map((t) => [t.col, t.row, t.kind, t.material, Math.round(t.hp), t.rot]);
@@ -176,12 +194,28 @@ export function fromStored(stored: unknown): BuildGrid {
   let nextId = 1;
   for (const raw of stored) {
     if (!Array.isArray(raw) || raw.length < 4) continue;
-    const [col, row, kind, material, hp, rot] = raw as [number, number, StructureKind, MaterialTier, number?, number?];
+    const [col, row, kind, material, hp, rot] = raw as [
+      number,
+      number,
+      StructureKind,
+      MaterialTier,
+      number?,
+      number?,
+    ];
     if (typeof col !== 'number' || typeof row !== 'number') continue;
     if (!(kind in STRUCTURE_HP)) continue;
     const mat: MaterialTier = material in MATERIAL_HP_MULT ? material : 'wood';
     const maxHp = maxHpFor(kind, mat);
-    tiles.push({ id: nextId++, col, row, kind, material: mat, hp: Math.max(1, Math.min(maxHp, hp ?? maxHp)), maxHp, rot: rot ?? 0 });
+    tiles.push({
+      id: nextId++,
+      col,
+      row,
+      kind,
+      material: mat,
+      hp: Math.max(1, Math.min(maxHp, hp ?? maxHp)),
+      maxHp,
+      rot: rot ?? 0,
+    });
   }
   return { tiles, nextId };
 }

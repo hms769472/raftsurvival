@@ -34,6 +34,8 @@ declare global {
     __setMove?: (dir: 'left' | 'right' | 'up' | 'down', pressed: boolean) => void;
     /** Debug overlay: draws attack arcs / enemy hitboxes when true (RAFT-102). */
     __debugHitboxes?: boolean;
+    /** RAFT-604: enables the `debug()` logger at runtime. */
+    __debug?: boolean;
 
     // Action hooks exposed by <Game> for the React HUD buttons.
     __eatFishFromGame?: () => void;

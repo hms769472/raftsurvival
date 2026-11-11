@@ -23,10 +23,27 @@ import SaveSlots from '@/components/SaveSlots';
 import Leaderboard from '@/components/Leaderboard';
 import HintToast from '@/components/HintToast';
 import TouchControls from '@/components/TouchControls';
-import { loadSnapshot, saveSnapshot, hasSnapshot, type GameSnapshot, type SnapshotStore } from '@/lib/save';
-import { nextWeaponTier, BASE_RAFT_HEIGHT, EXPAND_SIZE, MAX_HEALTH, type WeaponTier } from '@/lib/balance';
+import {
+  loadSnapshot,
+  saveSnapshot,
+  hasSnapshot,
+  type GameSnapshot,
+  type SnapshotStore,
+} from '@/lib/save';
+import {
+  nextWeaponTier,
+  BASE_RAFT_HEIGHT,
+  EXPAND_SIZE,
+  MAX_HEALTH,
+  type WeaponTier,
+} from '@/lib/balance';
 import { matchAction, loadBindings } from '@/lib/controls';
-import { DEFAULT_PROGRESSION, addXp, xpProgress, type ProgressionState } from '@/lib/systems/progression';
+import {
+  DEFAULT_PROGRESSION,
+  addXp,
+  xpProgress,
+  type ProgressionState,
+} from '@/lib/systems/progression';
 import { canRankUp, perkEffects, rankUp, type PerkRanks } from '@/lib/systems/perks';
 import {
   EMPTY_OBJECTIVE_STATS,
@@ -43,7 +60,9 @@ const IS_DEV = process.env.NODE_ENV !== 'production';
 const COOP_ENABLED = false;
 
 export default function Home() {
-  const [scene, setScene] = useState<'menu' | 'playing' | 'settings' | 'credits' | 'coop' | 'achievements' | 'skins' | 'leaderboard'>('menu');
+  const [scene, setScene] = useState<
+    'menu' | 'playing' | 'settings' | 'credits' | 'coop' | 'achievements' | 'skins' | 'leaderboard'
+  >('menu');
   const [gameId, setGameId] = useState(0);
   const [showDevPanel, setShowDevPanel] = useState(false);
   // RAFT-501: first-run tutorial overlay.
@@ -76,7 +95,7 @@ export default function Home() {
   const [hasSave, setHasSave] = useState(false);
   const [playerState, setPlayerState] = useState<'standing' | 'sitting' | 'laying'>('standing');
   const [gameScale, setGameScale] = useState(1);
-  const [barrelWater, setBarrelWater] = useState(0);
+  const [, setBarrelWater] = useState(0);
   // RAFT-505: nearest active threat (mirrored from <Game>) for the HUD warning.
   const [threat, setThreat] = useState<'shark' | 'frog' | null>(null);
   const [spearTier, setSpearTier] = useState<WeaponTier>('wooden');
@@ -89,7 +108,11 @@ export default function Home() {
   // RAFT-405: dried fish produced by the drying rack.
   const [driedFish, setDriedFish] = useState(0);
   const [isPerkOpen, setIsPerkOpen] = useState(false);
-  const [rewardAction, setRewardAction] = useState<{ wood?: number; plastic?: number; id: number } | null>(null);
+  const [rewardAction, setRewardAction] = useState<{
+    wood?: number;
+    plastic?: number;
+    id: number;
+  } | null>(null);
   // RAFT-306: win screen.
   const [victory, setVictory] = useState(false);
   const [victoryCoins, setVictoryCoins] = useState(0);
@@ -105,7 +128,9 @@ export default function Home() {
   const [showPause, setShowPause] = useState(false);
 
   // Keep the victory reward in sync with the live day counter.
-  useEffect(() => { dayRef.current = day; }, [day]);
+  useEffect(() => {
+    dayRef.current = day;
+  }, [day]);
 
   // RAFT-301: award XP, level up, and toast on a level gain.
   const applyXp = useCallback((amount: number) => {
@@ -114,42 +139,54 @@ export default function Home() {
     progressionRef.current = result.state;
     setProgression(result.state);
     if (result.leveledUp) {
-      window.dispatchEvent(new CustomEvent('achievementUnlocked', {
-        detail: {
-          emoji: '⭐',
-          name: `LEVEL ${result.state.level}`,
-          description: `+${result.levelsGained} perk point${result.levelsGained > 1 ? 's' : ''} earned`,
-        },
-      }));
+      window.dispatchEvent(
+        new CustomEvent('achievementUnlocked', {
+          detail: {
+            emoji: '⭐',
+            name: `LEVEL ${result.state.level}`,
+            description: `+${result.levelsGained} perk point${result.levelsGained > 1 ? 's' : ''} earned`,
+          },
+        }),
+      );
     }
   }, []);
 
   // RAFT-304: grant an objective's reward exactly once, then toast.
-  const grantObjectiveRewards = useCallback((completed: Objective[]) => {
-    let xp = 0, coins = 0, wood = 0, plastic = 0;
-    for (const o of completed) {
-      xp += o.reward.xp ?? 0;
-      coins += o.reward.coins ?? 0;
-      wood += o.reward.wood ?? 0;
-      plastic += o.reward.plastic ?? 0;
-    }
-    if (xp > 0) applyXp(xp);
-    if (coins > 0) {
-      try {
-        const cur = parseInt(localStorage.getItem('raftCoins') || '0', 10);
-        localStorage.setItem('raftCoins', String(cur + coins));
-      } catch { /* storage disabled */ }
-    }
-    if (wood > 0 || plastic > 0) {
-      setRewardAction({ wood: wood || undefined, plastic: plastic || undefined, id: Date.now() });
-    }
-    const last = completed[completed.length - 1];
-    if (last) {
-      window.dispatchEvent(new CustomEvent('achievementUnlocked', {
-        detail: { emoji: '🎯', name: 'OBJECTIVE COMPLETE', description: last.text },
-      }));
-    }
-  }, [applyXp]);
+  const grantObjectiveRewards = useCallback(
+    (completed: Objective[]) => {
+      let xp = 0,
+        coins = 0,
+        wood = 0,
+        plastic = 0;
+      for (const o of completed) {
+        xp += o.reward.xp ?? 0;
+        coins += o.reward.coins ?? 0;
+        wood += o.reward.wood ?? 0;
+        plastic += o.reward.plastic ?? 0;
+      }
+      if (xp > 0) applyXp(xp);
+      if (coins > 0) {
+        try {
+          const cur = parseInt(localStorage.getItem('raftCoins') || '0', 10);
+          localStorage.setItem('raftCoins', String(cur + coins));
+        } catch {
+          /* storage disabled */
+        }
+      }
+      if (wood > 0 || plastic > 0) {
+        setRewardAction({ wood: wood || undefined, plastic: plastic || undefined, id: Date.now() });
+      }
+      const last = completed[completed.length - 1];
+      if (last) {
+        window.dispatchEvent(
+          new CustomEvent('achievementUnlocked', {
+            detail: { emoji: '🎯', name: 'OBJECTIVE COMPLETE', description: last.text },
+          }),
+        );
+      }
+    },
+    [applyXp],
+  );
 
   // RAFT-306: surviving to the win day pays out coins and opens the victory screen.
   const handleVictory = useCallback(() => {
@@ -157,7 +194,9 @@ export default function Home() {
     try {
       const cur = parseInt(localStorage.getItem('raftCoins') || '0', 10);
       localStorage.setItem('raftCoins', String(cur + earned));
-    } catch { /* storage disabled */ }
+    } catch {
+      /* storage disabled */
+    }
     setVictoryCoins(earned);
     setVictory(true);
   }, []);
@@ -238,10 +277,13 @@ export default function Home() {
   useEffect(() => {
     const escHandler = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && scene === 'playing' && !gameOver) {
-        if (isPerkOpen) { setIsPerkOpen(false); return; }
+        if (isPerkOpen) {
+          setIsPerkOpen(false);
+          return;
+        }
         setIsCraftingOpen(false);
         setIsRecipeBookOpen(false);
-        setShowPause(prev => !prev);
+        setShowPause((prev) => !prev);
       }
     };
     window.addEventListener('keydown', escHandler);
@@ -261,14 +303,14 @@ export default function Home() {
       // RAFT-507: P / Escape toggles the pause menu.
       if (e.key.toLowerCase() === 'p' || e.key === 'Escape') {
         e.preventDefault();
-        setShowPause(prev => !prev);
+        setShowPause((prev) => !prev);
         return;
       }
       if (showPause) return;
       // RAFT-503: crafting hotkey follows the player's binding.
       const action = matchAction(loadBindings(), e.key);
-      if (action === 'craft') setIsCraftingOpen(prev => !prev);
-      if (e.key.toLowerCase() === 'r') setIsRecipeBookOpen(prev => !prev);
+      if (action === 'craft') setIsCraftingOpen((prev) => !prev);
+      if (e.key.toLowerCase() === 'r') setIsRecipeBookOpen((prev) => !prev);
       // NOTE: sit/lay are HUD buttons now — WASD owns S/W/A/D for movement.
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -277,47 +319,73 @@ export default function Home() {
 
   // Raft expansion (handled directly in handleCraft to avoid a state-sync effect)
 
-  const handleStatsUpdate = useCallback((stats: { health: number; hunger: number; thirst: number; fish: number; day: number; wood: number; plastic: number; raftHealth: number; walls?: number; roofs?: number; floors?: number; raftSize?: number; capacity?: number; damaged?: boolean; cookedFish?: number; driedFish?: number; kills?: number; islands?: number; structures?: number; crafted?: number; woodGathered?: number; fishCaught?: number }) => {
-    setHealth(stats.health);
-    setHunger(stats.hunger);
-    setThirst(stats.thirst ?? 100);
-    setFish(stats.fish);
-    setDay(stats.day);
-    setWood(stats.wood);
-    setPlastic(stats.plastic);
-    setRaftHealth(stats.raftHealth ?? 100);
-    // RAFT-207: the game owns deck size; mirror it so the craft menu shows cost.
-    if (typeof stats.raftSize === 'number') setRaftWidth(stats.raftSize);
-    if (typeof stats.capacity === 'number') setStorageCap(stats.capacity);
-    if (typeof stats.walls === 'number') setWalls(stats.walls);
-    if (typeof stats.roofs === 'number') setRoofs(stats.roofs);
-    if (typeof stats.floors === 'number') setFloors(stats.floors);
-    if (typeof stats.damaged === 'boolean') setNeedsRepair(stats.damaged);
-    if (typeof stats.cookedFish === 'number') setCookedFish(stats.cookedFish);
-    if (typeof stats.driedFish === 'number') setDriedFish(stats.driedFish);
+  const handleStatsUpdate = useCallback(
+    (stats: {
+      health: number;
+      hunger: number;
+      thirst: number;
+      fish: number;
+      day: number;
+      wood: number;
+      plastic: number;
+      raftHealth: number;
+      walls?: number;
+      roofs?: number;
+      floors?: number;
+      raftSize?: number;
+      capacity?: number;
+      damaged?: boolean;
+      cookedFish?: number;
+      driedFish?: number;
+      kills?: number;
+      islands?: number;
+      structures?: number;
+      crafted?: number;
+      woodGathered?: number;
+      fishCaught?: number;
+    }) => {
+      setHealth(stats.health);
+      setHunger(stats.hunger);
+      setThirst(stats.thirst ?? 100);
+      setFish(stats.fish);
+      setDay(stats.day);
+      setWood(stats.wood);
+      setPlastic(stats.plastic);
+      setRaftHealth(stats.raftHealth ?? 100);
+      // RAFT-207: the game owns deck size; mirror it so the craft menu shows cost.
+      if (typeof stats.raftSize === 'number') setRaftWidth(stats.raftSize);
+      if (typeof stats.capacity === 'number') setStorageCap(stats.capacity);
+      if (typeof stats.walls === 'number') setWalls(stats.walls);
+      if (typeof stats.roofs === 'number') setRoofs(stats.roofs);
+      if (typeof stats.floors === 'number') setFloors(stats.floors);
+      if (typeof stats.damaged === 'boolean') setNeedsRepair(stats.damaged);
+      if (typeof stats.cookedFish === 'number') setCookedFish(stats.cookedFish);
+      if (typeof stats.driedFish === 'number') setDriedFish(stats.driedFish);
 
-    // RAFT-304: fold the monotonic run counters into the objective tracker and
-    // advance the chain, granting rewards for anything that just completed.
-    const prev = objectiveStatsRef.current;
-    const next: ObjectiveStats = {
-      woodGathered: Math.max(prev.woodGathered, stats.woodGathered ?? 0),
-      fishCaught: Math.max(prev.fishCaught, stats.fishCaught ?? 0),
-      structuresBuilt: Math.max(prev.structuresBuilt, stats.structures ?? 0),
-      kills: Math.max(prev.kills, stats.kills ?? 0),
-      islandsFound: Math.max(prev.islandsFound, stats.islands ?? 0),
-      crafted: Math.max(prev.crafted, stats.crafted ?? 0),
-      day: Math.max(prev.day, stats.day ?? 1),
-    };
-    objectiveStatsRef.current = next;
-    const active = currentObjective(objectiveIndexRef.current);
-    if (active) setObjectiveFill(objectiveProgress(active, next));
-    const advanced = advanceChain(objectiveIndexRef.current, next);
-    if (advanced.index !== objectiveIndexRef.current) {
-      objectiveIndexRef.current = advanced.index;
-      setObjectiveIndex(advanced.index);
-      if (advanced.completed.length > 0) grantObjectiveRewards(advanced.completed);
-    }
-  }, [grantObjectiveRewards]);
+      // RAFT-304: fold the monotonic run counters into the objective tracker and
+      // advance the chain, granting rewards for anything that just completed.
+      const prev = objectiveStatsRef.current;
+      const next: ObjectiveStats = {
+        woodGathered: Math.max(prev.woodGathered, stats.woodGathered ?? 0),
+        fishCaught: Math.max(prev.fishCaught, stats.fishCaught ?? 0),
+        structuresBuilt: Math.max(prev.structuresBuilt, stats.structures ?? 0),
+        kills: Math.max(prev.kills, stats.kills ?? 0),
+        islandsFound: Math.max(prev.islandsFound, stats.islands ?? 0),
+        crafted: Math.max(prev.crafted, stats.crafted ?? 0),
+        day: Math.max(prev.day, stats.day ?? 1),
+      };
+      objectiveStatsRef.current = next;
+      const active = currentObjective(objectiveIndexRef.current);
+      if (active) setObjectiveFill(objectiveProgress(active, next));
+      const advanced = advanceChain(objectiveIndexRef.current, next);
+      if (advanced.index !== objectiveIndexRef.current) {
+        objectiveIndexRef.current = advanced.index;
+        setObjectiveIndex(advanced.index);
+        if (advanced.completed.length > 0) grantObjectiveRewards(advanced.completed);
+      }
+    },
+    [grantObjectiveRewards],
+  );
 
   const handleCraft = (type: string) => {
     if (type === 'ROD') setHasRod(true);
@@ -325,7 +393,7 @@ export default function Home() {
     if (type === 'HAMMER') setHasHammer(true);
     if (type === 'RAIN_BARREL') setHasRainBarrel(true);
     if (type === 'CAMPFIRE') setHasCampfire(true);
-    if (type === 'SPEAR_UPGRADE') setSpearTier(prev => nextWeaponTier(prev) ?? prev);
+    if (type === 'SPEAR_UPGRADE') setSpearTier((prev) => nextWeaponTier(prev) ?? prev);
     // RAFT-201/202: building now happens in-game (Build Mode, key B); the game
     // owns resource deduction, deck size and grid state for REPAIR/EXPAND.
     setCraftAction({ type, id: Date.now() });
@@ -336,10 +404,16 @@ export default function Home() {
   // RAFT-207: how many expansions have been bought (drives the EXPAND cost).
   const expansions = Math.max(0, Math.round((raftWidth - BASE_RAFT_HEIGHT) / EXPAND_SIZE));
 
-  const handleCook = () => { window.__cookFish?.(); };
-  const handleEatCooked = () => { window.__eatCookedFish?.(); };
+  const handleCook = () => {
+    window.__cookFish?.();
+  };
+  const handleEatCooked = () => {
+    window.__eatCookedFish?.();
+  };
   // RAFT-405: eat a dried fish (the drying rack's output).
-  const handleEatDried = () => { window.__eatDriedFish?.(); };
+  const handleEatDried = () => {
+    window.__eatDriedFish?.();
+  };
 
   const handleEat = () => {
     window.__eatFishFromGame?.();
@@ -382,7 +456,10 @@ export default function Home() {
         localStorage.setItem('raftCoins', String(current + earned));
       }
       // RAFT-507: record a local leaderboard entry for this run.
-      const diff = (localStorage.getItem('raftSettings') ? JSON.parse(localStorage.getItem('raftSettings')!)?.difficulty : 'normal') || 'normal';
+      const diff =
+        (localStorage.getItem('raftSettings')
+          ? JSON.parse(localStorage.getItem('raftSettings')!)?.difficulty
+          : 'normal') || 'normal';
       const entry = {
         days: day,
         fishEaten: Math.floor(stats.totalFishEaten || 0),
@@ -395,7 +472,7 @@ export default function Home() {
       list.push(entry);
       list.sort((a: { days: number }, b: { days: number }) => b.days - a.days);
       localStorage.setItem('raftLeaderboard', JSON.stringify(list.slice(0, 10)));
-    } catch (e) {}
+    } catch {}
     setGameOver(true); // COINS REWARD v2
   }, [day]);
 
@@ -444,7 +521,7 @@ export default function Home() {
 
   const handleRespawn = () => {
     setGameOver(false);
-    setGameId(prev => prev + 1);
+    setGameId((prev) => prev + 1);
     resetHudValues();
     resetProgression(false);
   };
@@ -457,7 +534,7 @@ export default function Home() {
     setGameOver(false);
     setShowPause(false);
     setIsPerkOpen(false);
-    setGameId(prev => prev + 1);
+    setGameId((prev) => prev + 1);
     setScene('playing');
   }, [resetProgression, resetHudValues]);
 
@@ -522,7 +599,7 @@ export default function Home() {
     setGameOver(false);
     setShowPause(false);
     setPlayerState('standing');
-    setGameId(prev => prev + 1);
+    setGameId((prev) => prev + 1);
     setScene('playing');
   }, []);
 
@@ -533,14 +610,17 @@ export default function Home() {
   }, []);
 
   // RAFT-507: write the live snapshot into the chosen slot.
-  const handleSelectSaveSlot = useCallback((slot: number) => {
-    const snap = snapshotStore.current ?? initialState;
-    if (snap) {
-      saveSnapshot(snap, slot);
-      setHasSave(true);
-    }
-    setSaveSlotsMode(null);
-  }, [snapshotStore, initialState]);
+  const handleSelectSaveSlot = useCallback(
+    (slot: number) => {
+      const snap = snapshotStore.current ?? initialState;
+      if (snap) {
+        saveSnapshot(snap, slot);
+        setHasSave(true);
+      }
+      setSaveSlotsMode(null);
+    },
+    [snapshotStore, initialState],
+  );
 
   // RAFT-007: fresh run — clear any loaded snapshot so <Game> boots from defaults.
   const handlePlay = useCallback(() => {
@@ -559,7 +639,9 @@ export default function Home() {
 
   // RAFT-501: replay the tutorial from Settings.
   const handleReplayTutorial = useCallback(() => {
-    try { localStorage.removeItem('raftTutorialSeen'); } catch {}
+    try {
+      localStorage.removeItem('raftTutorialSeen');
+    } catch {}
     setShowTutorial(true);
   }, []);
 
@@ -649,7 +731,6 @@ export default function Home() {
             onHook={handleHook}
             hasSpear={hasSpear}
             hasRainBarrel={hasRainBarrel}
-            barrelWater={barrelWater}
             raftHealth={raftHealth}
             storageCap={storageCap}
             maxHearts={Math.round(MAX_HEALTH + effects.maxHealthBonus)}
@@ -663,12 +744,15 @@ export default function Home() {
             onOpenPerks={() => setIsPerkOpen(true)}
             playerState={playerState}
             onPoseChange={setPlayerState}
-            onMainMenu={() => { setScene('menu'); setIsCraftingOpen(false); setIsRecipeBookOpen(false); setIsPerkOpen(false); }}
+            onMainMenu={() => {
+              setScene('menu');
+              setIsCraftingOpen(false);
+              setIsRecipeBookOpen(false);
+              setIsPerkOpen(false);
+            }}
             threat={threat}
           />
-          {isRecipeBookOpen && (
-            <RecipeBook onClose={() => setIsRecipeBookOpen(false)} />
-          )}
+          {isRecipeBookOpen && <RecipeBook onClose={() => setIsRecipeBookOpen(false)} />}
           {IS_DEV && showDevPanel && <DevTuningPanel onClose={() => setShowDevPanel(false)} />}
           {isCraftingOpen && (
             <CraftingMenu
@@ -707,7 +791,10 @@ export default function Home() {
               level={progression.level}
               coinsEarned={victoryCoins}
               onNewGamePlus={handleNewGamePlus}
-              onMainMenu={() => { setVictory(false); setScene('menu'); }}
+              onMainMenu={() => {
+                setVictory(false);
+                setScene('menu');
+              }}
             />
           )}
           {showPause && !gameOver && !saveSlotsMode && (
@@ -715,7 +802,10 @@ export default function Home() {
               onResume={() => setShowPause(false)}
               onSave={() => handleOpenSaveSlots('save')}
               onLoad={() => handleOpenSaveSlots('load')}
-              onSettings={() => { setShowPause(false); setScene('settings'); }}
+              onSettings={() => {
+                setShowPause(false);
+                setScene('settings');
+              }}
               onQuit={handleQuit}
             />
           )}
@@ -736,13 +826,16 @@ export default function Home() {
             onAttack={handleAttack}
             onFish={handleFish}
             onHook={handleHook}
-            onCraft={() => setIsCraftingOpen(prev => !prev)}
+            onCraft={() => setIsCraftingOpen((prev) => !prev)}
           />
           <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-12">
             <BackgroundMusic />
           </div>
           <button
-            onClick={() => { setIsCraftingOpen(false); setShowPause(true); }}
+            onClick={() => {
+              setIsCraftingOpen(false);
+              setShowPause(true);
+            }}
             className="absolute top-2 left-1/2 transform -translate-x-1/2 z-50 pointer-events-auto bg-black/80 hover:bg-black text-white px-4 py-2 rounded text-[12px] border-2 border-yellow-500 cursor-pointer"
           >
             [P] Pause
@@ -753,18 +846,3 @@ export default function Home() {
     </main>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

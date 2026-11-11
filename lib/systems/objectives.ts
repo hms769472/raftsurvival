@@ -6,13 +6,7 @@
 // whole chain is unit testable.
 
 export type ObjectiveStat =
-  | 'woodGathered'
-  | 'fishCaught'
-  | 'structuresBuilt'
-  | 'kills'
-  | 'islandsFound'
-  | 'crafted'
-  | 'day';
+  'woodGathered' | 'fishCaught' | 'structuresBuilt' | 'kills' | 'islandsFound' | 'crafted' | 'day';
 
 export type ObjectiveStats = Record<ObjectiveStat, number>;
 
@@ -45,10 +39,22 @@ export const OBJECTIVES: Objective[] = [
   { id: 'o6', text: 'Reach Day 3', stat: 'day', target: 3, reward: { plastic: 10 } },
   { id: 'o7', text: 'Gather 60 wood', stat: 'woodGathered', target: 60, reward: { xp: 30 } },
   { id: 'o8', text: 'Discover an island', stat: 'islandsFound', target: 1, reward: { xp: 25 } },
-  { id: 'o9', text: 'Build 10 structures', stat: 'structuresBuilt', target: 10, reward: { wood: 15 } },
+  {
+    id: 'o9',
+    text: 'Build 10 structures',
+    stat: 'structuresBuilt',
+    target: 10,
+    reward: { wood: 15 },
+  },
   { id: 'o10', text: 'Defeat 10 enemies', stat: 'kills', target: 10, reward: { xp: 40 } },
   { id: 'o11', text: 'Reach Day 10', stat: 'day', target: 10, reward: { plastic: 20 } },
-  { id: 'o12', text: 'Survive to Day 20', stat: 'day', target: 20, reward: { xp: 100, coins: 100 } },
+  {
+    id: 'o12',
+    text: 'Survive to Day 20',
+    stat: 'day',
+    target: 20,
+    reward: { xp: 100, coins: 100 },
+  },
 ];
 
 /** The active objective, or null once the whole chain is complete. */

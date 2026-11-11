@@ -16,8 +16,7 @@ import {
   resetTunable,
 } from '@/lib/balance';
 
-const minutesToEmpty = (drainPerFrame: number) =>
-  (100 / drainPerFrame) / FRAMES_PER_SECOND / 60;
+const minutesToEmpty = (drainPerFrame: number) => 100 / drainPerFrame / FRAMES_PER_SECOND / 60;
 
 describe('survival economy tuning (RAFT-402)', () => {
   it('Normal: doing nothing empties hunger in the 8-12 min target window', () => {

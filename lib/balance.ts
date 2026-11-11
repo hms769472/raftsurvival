@@ -88,7 +88,10 @@ export const MATERIAL_HP_MULT: Record<MaterialTier, number> = {
   reinforced: 1.6,
   metal: 2.5,
 };
-export const MATERIAL_UPGRADE_COST: Record<Exclude<MaterialTier, 'wood'>, { wood: number; plastic: number }> = {
+export const MATERIAL_UPGRADE_COST: Record<
+  Exclude<MaterialTier, 'wood'>,
+  { wood: number; plastic: number }
+> = {
   reinforced: { wood: 6, plastic: 4 },
   metal: { wood: 10, plastic: 12 },
 };
@@ -122,10 +125,12 @@ export const WEATHER_HEAT_THIRST = 1.8; // heat drains thirst faster
 export const WEATHER_SNOW_HUNGER = 1.8; // cold drains hunger faster
 export const WEATHER_RAIN_DRAIN = 1.3; // rain is a mild drain on both
 
-
 // ===== Weapon tiers (RAFT-106) =====
 export type WeaponTier = 'wooden' | 'stone' | 'reinforced';
-export const WEAPON_TIERS: Record<WeaponTier, { name: string; damage: number; cooldown: number; wood: number; plastic: number }> = {
+export const WEAPON_TIERS: Record<
+  WeaponTier,
+  { name: string; damage: number; cooldown: number; wood: number; plastic: number }
+> = {
   wooden: { name: 'Wooden Spear', damage: 1, cooldown: 30, wood: 8, plastic: 0 },
   stone: { name: 'Stone Spear', damage: 2, cooldown: 24, wood: 8, plastic: 6 },
   reinforced: { name: 'Reinforced Spear', damage: 3, cooldown: 18, wood: 12, plastic: 10 },
@@ -229,9 +234,30 @@ export type DifficultyMods = {
   sharkRetreatMult: number;
 };
 export const DIFFICULTY: Record<DifficultyKey, DifficultyMods> = {
-  easy: { hungerRate: 0.6, thirstRate: 0.6, damageMult: 0.5, enemySpawnMult: 1.5, regenBonus: 1.5, sharkRetreatMult: 1.5 },
-  normal: { hungerRate: 1.0, thirstRate: 1.0, damageMult: 1.0, enemySpawnMult: 1.0, regenBonus: 1.0, sharkRetreatMult: 1.0 },
-  hard: { hungerRate: 1.6, thirstRate: 1.6, damageMult: 1.5, enemySpawnMult: 0.6, regenBonus: 0.5, sharkRetreatMult: 0.6 },
+  easy: {
+    hungerRate: 0.6,
+    thirstRate: 0.6,
+    damageMult: 0.5,
+    enemySpawnMult: 1.5,
+    regenBonus: 1.5,
+    sharkRetreatMult: 1.5,
+  },
+  normal: {
+    hungerRate: 1.0,
+    thirstRate: 1.0,
+    damageMult: 1.0,
+    enemySpawnMult: 1.0,
+    regenBonus: 1.0,
+    sharkRetreatMult: 1.0,
+  },
+  hard: {
+    hungerRate: 1.6,
+    thirstRate: 1.6,
+    damageMult: 1.5,
+    enemySpawnMult: 0.6,
+    regenBonus: 0.5,
+    sharkRetreatMult: 0.6,
+  },
 };
 
 // Per-frame drain from a full bar (100) at Normal difficulty. Tuned so a
@@ -270,7 +296,11 @@ export const FOOD_TIERS: Record<FoodTier, { hunger: number; health: number }> = 
 
 // RAFT-404: food yielded per fish caught, by size/rarity. Golden fish are a
 // rare bonus catch worth extra.
-export const FISH_YIELD: Record<'small' | 'medium' | 'large', number> = { small: 1, medium: 2, large: 3 };
+export const FISH_YIELD: Record<'small' | 'medium' | 'large', number> = {
+  small: 1,
+  medium: 2,
+  large: 3,
+};
 export const GOLDEN_FISH_BONUS = 2;
 
 // ===== Hook (RAFT-403) =====

@@ -41,20 +41,31 @@ export default function CoopMenu({ onClose }: CoopMenuProps) {
         {/* Status message */}
         <div className="bg-[#F5DEB3] border-2 border-[#8B4513] rounded p-3 mb-6 min-h-[4rem] flex items-center justify-center">
           {status === 'idle' && (
-            <div className="text-center text-[9px] text-[#5D4037]" style={{ fontFamily: '"Press Start 2P", monospace' }}>
-              Play with friends!<br />
+            <div
+              className="text-center text-[9px] text-[#5D4037]"
+              style={{ fontFamily: '"Press Start 2P", monospace' }}
+            >
+              Play with friends!
+              <br />
               Host or join a game.
             </div>
           )}
           {status === 'searching' && (
-            <div className="text-center text-[9px] text-[#2980B9]" style={{ fontFamily: '"Press Start 2P", monospace' }}>
+            <div
+              className="text-center text-[9px] text-[#2980B9]"
+              style={{ fontFamily: '"Press Start 2P", monospace' }}
+            >
               Searching for games...
               <div className="mt-2 animate-pulse">●●●</div>
             </div>
           )}
           {status === 'unavailable' && (
-            <div className="text-center text-[9px] text-[#E74C3C]" style={{ fontFamily: '"Press Start 2P", monospace' }}>
-              ⚠️ Coming Soon<br />
+            <div
+              className="text-center text-[9px] text-[#E74C3C]"
+              style={{ fontFamily: '"Press Start 2P", monospace' }}
+            >
+              ⚠️ Coming Soon
+              <br />
               Co-op is under development
             </div>
           )}
@@ -83,12 +94,18 @@ export default function CoopMenu({ onClose }: CoopMenuProps) {
 
         {/* Info */}
         <div className="bg-[#F5DEB3] border-2 border-[#8B4513] rounded p-3 mb-6">
-          <div className="text-[9px] text-[#5D4037] leading-loose" style={{ fontFamily: '"Press Start 2P", monospace' }}>
-            Features planned:<br />
-            • 2-4 player co-op<br />
-            • Shared raft building<br />
-            • Voice chat<br />
-            • Trade resources
+          <div
+            className="text-[9px] text-[#5D4037] leading-loose"
+            style={{ fontFamily: '"Press Start 2P", monospace' }}
+          >
+            Features planned:
+            <br />
+            • 2-4 player co-op
+            <br />
+            • Shared raft building
+            <br />
+            • Voice chat
+            <br />• Trade resources
           </div>
         </div>
 

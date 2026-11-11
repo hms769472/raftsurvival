@@ -48,7 +48,10 @@ describe('raft grid', () => {
   });
 
   it('only allows walls on edge cells', () => {
-    expect(canPlace(EMPTY_GRID, 1, 1, 'wall', ctx)).toEqual({ ok: false, reason: 'Walls go on edge cells' });
+    expect(canPlace(EMPTY_GRID, 1, 1, 'wall', ctx)).toEqual({
+      ok: false,
+      reason: 'Walls go on edge cells',
+    });
     expect(canPlace(EMPTY_GRID, 0, 1, 'wall', ctx).ok).toBe(true);
   });
 

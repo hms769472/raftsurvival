@@ -1,0 +1,20 @@
+# Normalize all text files to LF in the repository (CRLF -> LF).
+# Keeps diffs clean across Windows/macOS/Linux contributors.
+* text=auto eol=lf
+
+# Binary assets — never touch these.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.mp3 binary
+*.wav binary
+*.ogg binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
+
+# Keep generated / lock files as-is.
+package-lock.json -diff linguist-generated

@@ -1,12 +1,12 @@
-﻿import type { Metadata } from "next";
-import { Press_Start_2P } from "next/font/google";
-import "./globals.css";
+﻿import type { Metadata } from 'next';
+import { Press_Start_2P } from 'next/font/google';
+import './globals.css';
 
-const pressStart = Press_Start_2P({ weight: "400", subsets: ["latin"] });
+const pressStart = Press_Start_2P({ weight: '400', subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: "Raft Survival",
-  description: "A 2D survival game",
+  title: 'Raft Survival',
+  description: 'A 2D survival game',
 };
 
 export default function RootLayout({

@@ -7,7 +7,14 @@
 // production build it is not rendered and `TUNABLE` keeps its defaults.
 
 import { useState } from 'react';
-import { TUNABLE, DEFAULT_TUNABLE, TUNABLE_RANGE, setTunable, resetTunable, type TunableKey } from '@/lib/balance';
+import {
+  TUNABLE,
+  DEFAULT_TUNABLE,
+  TUNABLE_RANGE,
+  setTunable,
+  resetTunable,
+  type TunableKey,
+} from '@/lib/balance';
 
 const LABELS: Record<TunableKey, string> = {
   hungerDrain: 'Hunger drain / frame',
@@ -38,8 +45,18 @@ export default function DevTuningPanel({ onClose }: { onClose: () => void }) {
       <div className="flex items-center justify-between mb-2">
         <span className="font-bold text-yellow-300">DEV TUNING (F4)</span>
         <div className="flex gap-2">
-          <button onClick={reset} className="px-2 py-0.5 bg-gray-700 border border-gray-500 rounded">Reset</button>
-          <button onClick={onClose} className="px-2 py-0.5 bg-red-700 border border-red-900 rounded">X</button>
+          <button
+            onClick={reset}
+            className="px-2 py-0.5 bg-gray-700 border border-gray-500 rounded"
+          >
+            Reset
+          </button>
+          <button
+            onClick={onClose}
+            className="px-2 py-0.5 bg-red-700 border border-red-900 rounded"
+          >
+            X
+          </button>
         </div>
       </div>
       {(Object.keys(TUNABLE_RANGE) as TunableKey[]).map((key) => {

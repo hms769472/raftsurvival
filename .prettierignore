@@ -1,0 +1,17 @@
+# dependencies / build output
+node_modules/
+.next/
+out/
+build/
+coverage/
+
+# generated
+next-env.d.ts
+*.tsbuildinfo
+
+# static assets
+public/
+
+# docs / reports are hand-written
+reports/
+*.md

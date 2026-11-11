@@ -59,7 +59,10 @@ export function syncAchStats(
 }
 
 /** Returns achievements whose condition is now met and that are not yet unlocked. */
-export function findNewlyUnlocked(stats: AchievementStats, alreadyUnlocked: string[]): Achievement[] {
+export function findNewlyUnlocked(
+  stats: AchievementStats,
+  alreadyUnlocked: string[],
+): Achievement[] {
   return ACHIEVEMENTS.filter((a) => !alreadyUnlocked.includes(a.id) && a.condition(stats));
 }
 

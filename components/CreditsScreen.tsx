@@ -19,7 +19,10 @@ export default function CreditsScreen({ onClose }: CreditsScreenProps) {
           CREDITS
         </h2>
 
-        <div className="flex flex-col gap-5 text-[#5D4037] text-[10px] leading-relaxed" style={{ fontFamily: '"Press Start 2P", monospace' }}>
+        <div
+          className="flex flex-col gap-5 text-[#5D4037] text-[10px] leading-relaxed"
+          style={{ fontFamily: '"Press Start 2P", monospace' }}
+        >
           {/* Created By */}
           <div className="bg-[#F5DEB3] border-2 border-[#8B4513] rounded p-3">
             <div className="text-[#8B4513] mb-2 text-[11px]">CREATED BY</div>
@@ -42,9 +45,12 @@ export default function CreditsScreen({ onClose }: CreditsScreenProps) {
           <div className="bg-[#F5DEB3] border-2 border-[#8B4513] rounded p-3">
             <div className="text-[#8B4513] mb-2 text-[11px]">CONTRIBUTORS</div>
             <div className="text-[9px] leading-loose">
-              Morrow Foundry<br />
-              Open Source Community<br />
-              Kenney Assets<br />
+              Morrow Foundry
+              <br />
+              Open Source Community
+              <br />
+              Kenney Assets
+              <br />
               Freesound
             </div>
           </div>
@@ -53,7 +59,8 @@ export default function CreditsScreen({ onClose }: CreditsScreenProps) {
           <div className="bg-[#F5DEB3] border-2 border-[#8B4513] rounded p-3">
             <div className="text-[#8B4513] mb-2 text-[11px]">SPECIAL THANKS</div>
             <div className="text-[9px] leading-loose">
-              All playtesters<br />
+              All playtesters
+              <br />
               The Raft Survival community
             </div>
           </div>
@@ -62,11 +69,27 @@ export default function CreditsScreen({ onClose }: CreditsScreenProps) {
           <div className="bg-[#F5DEB3] border-2 border-[#8B4513] rounded p-3">
             <div className="text-[#8B4513] mb-2 text-[11px]">FOLLOW US</div>
             <div className="flex gap-3 justify-center text-2xl">
-              <span className="cursor-pointer hover:scale-110 transition-transform" title="Discord">💬</span>
-              <span className="cursor-pointer hover:scale-110 transition-transform" title="Facebook">📘</span>
-              <span className="cursor-pointer hover:scale-110 transition-transform" title="Instagram">📷</span>
-              <span className="cursor-pointer hover:scale-110 transition-transform" title="Twitter">🐦</span>
-              <span className="cursor-pointer hover:scale-110 transition-transform" title="YouTube">📺</span>
+              <span className="cursor-pointer hover:scale-110 transition-transform" title="Discord">
+                💬
+              </span>
+              <span
+                className="cursor-pointer hover:scale-110 transition-transform"
+                title="Facebook"
+              >
+                📘
+              </span>
+              <span
+                className="cursor-pointer hover:scale-110 transition-transform"
+                title="Instagram"
+              >
+                📷
+              </span>
+              <span className="cursor-pointer hover:scale-110 transition-transform" title="Twitter">
+                🐦
+              </span>
+              <span className="cursor-pointer hover:scale-110 transition-transform" title="YouTube">
+                📺
+              </span>
             </div>
           </div>
         </div>

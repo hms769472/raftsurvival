@@ -5,9 +5,20 @@
 // rebindable from Settings. Bindings live in localStorage under `raftBindings`
 // and are read by the canvas game loop, so a rebind takes effect immediately.
 
-export type ControlAction = 'left' | 'right' | 'up' | 'down' | 'attack' | 'fish' | 'hook' | 'build' | 'craft';
+export type ControlAction =
+  'left' | 'right' | 'up' | 'down' | 'attack' | 'fish' | 'hook' | 'build' | 'craft';
 
-export const CONTROL_ACTIONS: ControlAction[] = ['left', 'right', 'up', 'down', 'attack', 'fish', 'hook', 'build', 'craft'];
+export const CONTROL_ACTIONS: ControlAction[] = [
+  'left',
+  'right',
+  'up',
+  'down',
+  'attack',
+  'fish',
+  'hook',
+  'build',
+  'craft',
+];
 
 export const DEFAULT_BINDINGS: Record<ControlAction, string> = {
   left: 'ArrowLeft',
