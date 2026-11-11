@@ -85,7 +85,9 @@ export default function BackgroundMusic() {
 
   return (
     <div className="absolute top-4 right-4 z-30 flex flex-col items-center gap-1 bg-black/70 p-2 rounded-lg pointer-events-auto border-2 border-gray-600">
-      <audio ref={musicRef} src="/assets/audio/gameaudio.mp3" loop />
+      {/* RAFT-605: preload="none" keeps the 5.7 MB track off the critical path —
+          the browser only fetches it once playback is actually requested. */}
+      <audio ref={musicRef} src="/assets/audio/gameaudio.mp3" loop preload="none" />
 
       <div className="text-white text-[9px]" style={{ fontFamily: '"Press Start 2P", monospace' }}>
         VOL

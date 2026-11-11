@@ -5541,17 +5541,13 @@ export default function Game({
 
   return (
     <div className="relative" style={{ width: 800, height: 600 }}>
-      <img
-        src="/assets/backgroundscreen/waterscreen/waterbackground.gif"
-        alt=""
-        className="absolute inset-0 w-full h-full border-2 border-gray-700 shadow-lg"
-        style={{ zIndex: 0, objectFit: 'cover', pointerEvents: 'none', opacity: 0.9 }}
-        draggable={false}
-      />
+      {/* RAFT-605: procedural CSS water — replaces the 4.5 MB animated GIF. */}
       <div
-        className="absolute inset-0"
-        style={{ zIndex: 0, pointerEvents: 'none', background: 'rgba(0, 40, 80, 0.15)' }}
-      />
+        className="water-bg border-2 border-gray-700 shadow-lg"
+        style={{ zIndex: 0, pointerEvents: 'none', opacity: 0.95 }}
+      >
+        <div className="absolute inset-0" style={{ background: 'rgba(0, 40, 80, 0.15)' }} />
+      </div>
       <canvas
         ref={canvasRef}
         width={800}
