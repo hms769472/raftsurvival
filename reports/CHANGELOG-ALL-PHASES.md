@@ -169,3 +169,37 @@ Branch: `feature/raft-v0.2` · Start tag: `phase-start`
 
 ---
 
+## Phase 6 — Tech Debt, Performance & QA (RAFT-E6) — tag `phase-6`
+
+**Commit:** _(working tree — uncommitted)_
+
+**Added**
+- `lib/store.ts` — typed `gameStore` + `gameCommands` + `resetGameCommands` (replaces the gameplay `window.__*` globals)
+- `lib/logger.ts` — `debug()` gated behind `gameStore.debugHitboxes`; no raw `console.log` in hot paths
+- `lib/engine/entities.ts` — shared entity types (`Fish`, `Shark`, `Kraken`, `Frog`, `Island`, `Item`, `Projectile`, `TreasureChest`, `LootPickup`, `DamageNumber`, `WakeParticle`, `Raindrop`, `WaveStreak`, `FishFood`)
+- `lib/audio/sfx.ts` — Web Audio SFX: `startWaveSound`, `getAudioCtx`, `isSfxEnabled`, `playFootstepSound`, `playChopSound`, `playHitSound`, `playCraftSound`, `playEatSound`, `playDamageSound`
+- `lib/render/drawables.ts` — canvas draw routines: `drawChest`, `drawCloud`, `drawIsland`, `drawFish`, `drawFrog`, `drawShark`, `drawWood`, `drawPlastic`, `drawVerticalRaft`, `drawPlayer`, `drawKraken`, `drawEnemyHealthBar`
+- `lib/systems/build.ts` — build/grid helpers + `BuildDeps`/`RunCounters`: `deckMetrics`, `worldToCell`, `cellToWorld`, `placementCtx`, `costFor`, `cellAction`, `statsPayload`, `pushBuildCounts`, `tryPlace`, `tryRemove`, `toCanvasCoords`
+- `lib/systems/loot.ts` — loot helpers + `LootDeps`: `spawnDamageNumber`, `grantKillRewards`, `intactWalls`, `fishYield`, `yieldFish`, `grantHookedItem`, `findHookTarget`
+- `lib/systems/spawn.ts` — entity spawners: `spawnProjectile`, `spawnFrog`, `spawnIsland`, `spawnChest`, `spawnFishFood`, `spawnFish`, `spawnItem`, `spawnShark`
+- `e2e/smoke.spec.ts` + `playwright.config.ts` — Playwright smoke test (start → craft → save → load)
+- `lib/save.test.ts` — Vitest round-trip / normalization tests
+- `.prettierrc.json`, `.prettierignore`, `.gitattributes`, `eslint.config.mjs` — format/lint hygiene
+
+**Modified**
+- `components/Game.tsx` — `RAFT-601` split: ~2,300 lines of loop internals moved out to the six modules above; the component now only wires them via dependency-injection objects (`BuildDeps`, `LootDeps`, `RunCounters`) and thin wrappers. `RAFT-603` effect deps fixed (loop no longer restarts on `gameOver`). Restored **touch-to-eat** fishing (the RAFT-404 removal reversed after design review) with a short bite cooldown, and restored the looping water GIF backdrop.
+- `app/globals.css` — removed the CSS `.water-bg` replacement (background is the GIF again)
+- `types/game-globals.d.ts` — trimmed gameplay `window.__*` globals now carried by `lib/store.ts`
+- `public/assets/backgroundscreen/waterscreen/waterbackground.gif` — restored (RAFT-605 had deleted it)
+- `public/assets/audio/gameaudio.mp3` — recompressed (6,042,284 → 1,812,717 bytes)
+
+**Tickets:** RAFT-601,602,603,604,605,606,607 Done
+
+**Dependencies:** added `@playwright/test` (dev).
+
+**Config/data:** save schema unchanged (v6).
+
+**Verification:** tsc 0 errors · lint 0 errors / 0 warnings · build OK · vitest 69/69 passing
+
+---
+
