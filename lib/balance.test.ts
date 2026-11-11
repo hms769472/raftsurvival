@@ -10,6 +10,10 @@ import {
   DIFFICULTY,
   DAY_PRESSURE_STEP,
   DAY_PRESSURE_MAX,
+  FOOD_TIERS,
+  STARVE_DAMAGE,
+  REGEN_WELL_FED,
+  REGEN_STARVING,
   TUNABLE,
   DEFAULT_TUNABLE,
   setTunable,
@@ -38,6 +42,24 @@ describe('survival economy tuning (RAFT-402)', () => {
     const later = Math.min(DAY_PRESSURE_MAX, 1 + (30 - 1) * DAY_PRESSURE_STEP);
     expect(day1).toBe(1);
     expect(later).toBe(DAY_PRESSURE_MAX);
+  });
+});
+
+describe('food tiers & health (RAFT-405)', () => {
+  it('restores more hunger with each tier: raw < cooked < dried', () => {
+    expect(FOOD_TIERS.raw.hunger).toBeLessThan(FOOD_TIERS.cooked.hunger);
+    expect(FOOD_TIERS.cooked.hunger).toBeLessThan(FOOD_TIERS.dried.hunger);
+  });
+
+  it('only dried fish also heals', () => {
+    expect(FOOD_TIERS.raw.health).toBe(0);
+    expect(FOOD_TIERS.cooked.health).toBe(0);
+    expect(FOOD_TIERS.dried.health).toBeGreaterThan(0);
+  });
+
+  it('starvation costs health while a well-fed raft regenerates faster than a starving one', () => {
+    expect(STARVE_DAMAGE).toBeGreaterThan(0);
+    expect(REGEN_WELL_FED).toBeGreaterThan(REGEN_STARVING);
   });
 });
 

@@ -95,7 +95,7 @@ Legend: `Todo` · `In progress` · `Done` · `Partial` · `Skipped`
 | RAFT-603 | Fix effect dependencies; don't restart loop on `gameOver` | Done |
 | RAFT-604 | Remove `console.log` in hot paths; add debug logger | Done |
 | RAFT-605 | Perf: replace 4.7 MB GIF / compress audio / lazy-load | Done |
-| RAFT-606 | Unit tests for pure systems + Playwright smoke test | Todo |
+| RAFT-606 | Unit tests for pure systems + Playwright smoke test | Done |
 | RAFT-607 | Lint/format cleanup, remove dead code | Done |
 
 ---

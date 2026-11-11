@@ -2535,11 +2535,7 @@ export default function Game({
           statsRef.current.health = Math.min(maxHealth, statsRef.current.health + regenRate);
       }
 
-      if (
-        gameStore.hasRod &&
-        keys.F &&
-        fishingState === 'idle'
-      ) {
+      if (gameStore.hasRod && keys.F && fishingState === 'idle') {
         fishingState = 'casting';
         fishingTimer = 30;
         bobberX = player.x + player.width / 2 + (Math.random() > 0.5 ? 60 : -60);
@@ -2584,11 +2580,7 @@ export default function Game({
       const weapon = WEAPON_TIERS[spearTierRef.current];
       // RAFT-302: Fighter "Might" boosts damage, "Swift" shortens cooldown.
       const spearDamage = weapon.damage * perkRef.current.damageMult;
-      if (
-        gameStore.hasSpear &&
-        keys.Space &&
-        attackTimer === 0
-      ) {
+      if (gameStore.hasSpear && keys.Space && attackTimer === 0) {
         attackTimer = Math.max(1, Math.round(weapon.cooldown * perkRef.current.cooldownMult)); // RAFT-106/302
         playChopSound();
         let hitLanded = false;
@@ -4865,10 +4857,7 @@ export default function Game({
       if (kraken) drawKraken(kraken);
 
       // === FISHING ROD (visible in player's hand) ===
-      if (
-        gameStore.hasRod &&
-        playerStateRef.current === 'standing'
-      ) {
+      if (gameStore.hasRod && playerStateRef.current === 'standing') {
         const handX = player.x + player.width - 4;
         const handY = player.y + 30;
 
