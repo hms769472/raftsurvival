@@ -7,13 +7,10 @@ interface MainMenuProps {
   onLoad: () => void;
   onSettings: () => void;
   onCredits: () => void;
-  onCoop: () => void;
   onAchievements: () => void;
   onSkins: () => void;
   onLeaderboard: () => void;
   hasSave: boolean;
-  /** RAFT-506: Co-op stays hidden until networking exists. */
-  showCoop?: boolean;
 }
 
 export default function MainMenu({
@@ -21,12 +18,10 @@ export default function MainMenu({
   onLoad,
   onSettings,
   onCredits,
-  onCoop,
   onAchievements,
   onSkins,
   onLeaderboard,
   hasSave,
-  showCoop = false,
 }: MainMenuProps) {
   return (
     <div className="flex flex-col items-center justify-between h-screen bg-[#2D8FBD] relative overflow-hidden py-6">
@@ -65,14 +60,6 @@ export default function MainMenu({
             className="hover:text-white transition-colors drop-shadow-[0_2px_0_rgba(255,255,255,0.5)]"
           >
             LOAD GAME
-          </button>
-        )}
-        {showCoop && (
-          <button
-            onClick={onCoop}
-            className="hover:text-white transition-colors drop-shadow-[0_2px_0_rgba(255,255,255,0.5)]"
-          >
-            CO-OP
           </button>
         )}
         <button

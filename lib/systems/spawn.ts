@@ -1,4 +1,4 @@
-import { SHARK_MAX_HP, RARE_ITEM_CHANCE } from '@/lib/balance';
+import { SHARK_MAX_HP, RARE_ITEM_CHANCE, PIRATE_RAFT_HP } from '@/lib/balance';
 import { threatScale } from '@/lib/systems/combat';
 import type { StatsValues } from '@/lib/systems/build';
 import type {
@@ -7,7 +7,10 @@ import type {
   Frog,
   Island,
   Item,
+  Jellyfish,
+  PirateRaft,
   Projectile,
+  Seagull,
   Shark,
   TreasureChest,
 } from '@/lib/engine/entities';
@@ -267,3 +270,58 @@ export function spawnShark(statsRef: { current: StatsValues }): Shark {
     mouthOpen: 0,
   };
 }
+
+// ===== RAFT-109: additional threats =====
+
+/** A jellyfish drifting in from either side, bobbing as it goes. */
+export function spawnJellyfish(jellyfish: Jellyfish[]) {
+  const fromLeft = Math.random() < 0.5;
+  jellyfish.push({
+    x: fromLeft ? -50 : 850,
+    y: 420 + Math.random() * 160,
+    width: 34,
+    height: 44,
+    bobPhase: Math.random() * Math.PI * 2,
+    driftX: fromLeft ? 0.5 + Math.random() * 0.4 : -(0.5 + Math.random() * 0.4),
+    pulse: 0,
+  });
+}
+
+/** A seagull entering from the top, cruising until it lines up a dive. */
+export function spawnSeagull(seagulls: Seagull[]) {
+  const fromLeft = Math.random() < 0.5;
+  seagulls.push({
+    x: fromLeft ? -60 : 860,
+    y: 70 + Math.random() * 90,
+    vx: fromLeft ? 1.3 : -1.3,
+    vy: 0,
+    width: 44,
+    height: 24,
+    state: 'flying',
+    timer: 120 + Math.floor(Math.random() * 120),
+    diveTargetX: 400,
+    hitFlash: 0,
+    flapPhase: Math.random() * Math.PI * 2,
+  });
+}
+
+/** A pirate raft entering on the horizon. HP scales with the day like sharks. */
+export function spawnPirateRaft(
+  pirates: PirateRaft[],
+  statsRef: { current: StatsValues },
+): PirateRaft {
+  const fromLeft = Math.random() < 0.5;
+  const hp = Math.round(PIRATE_RAFT_HP * threatScale(statsRef.current.day).hpMult);
+  return {
+    x: fromLeft ? -140 : 940,
+    y: 300 + Math.random() * 90,
+    vx: fromLeft ? 0.5 : -0.5,
+    width: 150,
+    height: 70,
+    hp,
+    maxHp: hp,
+    fireTimer: 90 + Math.floor(Math.random() * 90),
+    hitFlash: 0,
+  };
+}
+

@@ -65,6 +65,24 @@ import {
   WATER_BARREL_COST,
   DEATH_LOG_LIMIT,
   TUNABLE,
+  // RAFT-107 ranged weapon
+  HARPOON_COST,
+  HARPOON_COOLDOWN,
+  HARPOON_SPEED,
+  HARPOON_DAMAGE,
+  HARPOON_RANGE,
+  // RAFT-109 additional threats
+  JELLYFISH_CONTACT_DAMAGE,
+  JELLYFISH_SPAWN_INTERVAL,
+  JELLYFISH_MAX,
+  SEAGULL_CONTACT_DAMAGE,
+  SEAGULL_SPAWN_INTERVAL,
+  SEAGULL_DIVE_SPEED,
+  SEAGULL_MAX,
+  PIRATE_CANNON_DAMAGE,
+  PIRATE_SPAWN_INTERVAL,
+  PIRATE_FIRE_INTERVAL,
+  PIRATE_CANNON_SPEED,
   type DifficultyKey,
   type DeathCause,
   type WeaponTier,
@@ -109,16 +127,21 @@ import type { SkinDefinition } from '@/types/game-globals';
 import type { GameSnapshot, SnapshotStore } from '@/lib/save';
 import { SAVE_VERSION } from '@/lib/save';
 import type {
+  Cannonball,
   DamageNumber,
   Fish,
   FishFood,
   Frog,
+  Harpoon,
   Island,
   Item,
+  Jellyfish,
   Kraken,
   LootPickup,
+  PirateRaft,
   Projectile,
   Raindrop,
+  Seagull,
   Shark,
   TreasureChest,
   WakeParticle,
@@ -142,6 +165,9 @@ import {
   spawnFish as spawnFishImpl,
   spawnItem as spawnItemImpl,
   spawnShark as spawnSharkImpl,
+  spawnJellyfish as spawnJellyfishImpl,
+  spawnSeagull as spawnSeagullImpl,
+  spawnPirateRaft as spawnPirateRaftImpl,
 } from '@/lib/systems/spawn';
 import {
   worldToCell as worldToCellImpl,
@@ -163,6 +189,7 @@ import {
   grantHookedItem as grantHookedItemImpl,
   findHookTarget as findHookTargetImpl,
   type LootDeps,
+  type LootEnemy,
 } from '@/lib/systems/loot';
 import {
   drawChest as drawChestImpl,
@@ -177,6 +204,10 @@ import {
   drawPlayer as drawPlayerImpl,
   drawKraken as drawKrakenImpl,
   drawEnemyHealthBar as drawEnemyHealthBarImpl,
+  drawJellyfish as drawJellyfishImpl,
+  drawSeagull as drawSeagullImpl,
+  drawPirateRaft as drawPirateRaftImpl,
+  drawHarpoon as drawHarpoonImpl,
   type Cloud,
 } from '@/lib/render/drawables';
 
@@ -213,6 +244,8 @@ type GameProps = {
   raftWidth: number;
   hasRod: boolean;
   hasSpear: boolean;
+  /** RAFT-107: throwable harpoon owned (sinks pirate rafts). */
+  hasHarpoon: boolean;
   hasHammer: boolean;
   hasCampfire: boolean;
   hasRainBarrel: boolean;
@@ -257,6 +290,7 @@ export default function Game({
   raftWidth,
   hasRod,
   hasSpear,
+  hasHarpoon,
   hasHammer,
   hasCampfire,
   hasRainBarrel,
@@ -408,10 +442,11 @@ export default function Game({
     gameStore.floors = floors;
     gameStore.hasRod = hasRod;
     gameStore.hasSpear = hasSpear;
+    gameStore.hasHarpoon = hasHarpoon;
     gameStore.hasHammer = hasHammer;
     gameStore.hasCampfire = hasCampfire;
     gameStore.hasRainBarrel = hasRainBarrel;
-  }, [walls, roofs, floors, hasRod, hasSpear, hasHammer, hasCampfire, hasRainBarrel]);
+  }, [walls, roofs, floors, hasRod, hasSpear, hasHarpoon, hasHammer, hasCampfire, hasRainBarrel]);
 
   // Water waves ambient sound
   useEffect(() => {
@@ -561,6 +596,15 @@ export default function Game({
       if (statsRef.current.wood >= 8) {
         statsRef.current.wood -= 8;
       }
+    } else if (craftAction.type === 'HARPOON') {
+      // RAFT-107: the ranged weapon costs wood + plastic.
+      if (
+        statsRef.current.wood >= HARPOON_COST.wood &&
+        statsRef.current.plastic >= HARPOON_COST.plastic
+      ) {
+        statsRef.current.wood -= HARPOON_COST.wood;
+        statsRef.current.plastic -= HARPOON_COST.plastic;
+      }
     } else if (craftAction.type === 'HAMMER') {
       if (statsRef.current.wood >= 8) {
         statsRef.current.wood -= 8;
@@ -592,7 +636,7 @@ export default function Game({
       }
     }
     // RAFT-301: real crafts and spear upgrades are XP sources.
-    const CRAFT_XP_TYPES = ['ROD', 'SPEAR', 'HAMMER', 'RAIN_BARREL', 'CAMPFIRE'];
+    const CRAFT_XP_TYPES = ['ROD', 'SPEAR', 'HARPOON', 'HAMMER', 'RAIN_BARREL', 'CAMPFIRE'];
     if (CRAFT_XP_TYPES.includes(craftAction.type)) {
       craftsMadeRef.current += 1;
       onXpGainRef.current?.(XP_REWARDS.craft);
@@ -629,6 +673,7 @@ export default function Game({
       F: false,
       Space: false,
       H: false,
+      Q: false,
     };
 
     // RAFT-503: player-rebindable controls (re-read live when Settings changes them).
@@ -674,7 +719,8 @@ export default function Game({
         const attack = !!pad.buttons[0]?.pressed;
         const hook = !!pad.buttons[1]?.pressed;
         const fish = !!pad.buttons[2]?.pressed;
-        if (left || right || up || down || attack || hook || fish) {
+        const harpoonBtn = !!pad.buttons[3]?.pressed;
+        if (left || right || up || down || attack || hook || fish || harpoonBtn) {
           active = true;
           keys.ArrowLeft = left;
           keys.ArrowRight = right;
@@ -683,6 +729,7 @@ export default function Game({
           if (attack) keys.Space = true;
           if (hook) keys.H = true;
           if (fish) keys.F = true;
+          if (harpoonBtn) keys.Q = true;
         }
         break;
       }
@@ -691,6 +738,7 @@ export default function Game({
         keys.Space = false;
         keys.H = false;
         keys.F = false;
+        keys.Q = false;
       }
       padWasActive = active;
     };
@@ -706,6 +754,13 @@ export default function Game({
     const wakeParticles: WakeParticle[] = [];
     const fishes: Fish[] = [];
     const fishFoods: FishFood[] = [];
+
+    // RAFT-109: additional threats + RAFT-107 player harpoon.
+    const jellyfish: Jellyfish[] = [];
+    const seagulls: Seagull[] = [];
+    const cannonballs: Cannonball[] = [];
+    let pirate: PirateRaft | null = null;
+    let harpoon: Harpoon | null = null;
 
     // === KEYBOARD HANDLERS ===
     const spawnProjectile = (frog: Frog) => spawnProjectileImpl(projectiles, player, frog);
@@ -731,6 +786,7 @@ export default function Game({
       if (action === 'fish') keys.F = true;
       if (action === 'attack') keys.Space = true;
       if (action === 'hook') keys.H = true;
+      if (action === 'harpoon') keys.Q = true;
       if (e.key === 'F3') {
         e.preventDefault();
         gameStore.debugHitboxes = !gameStore.debugHitboxes;
@@ -762,6 +818,7 @@ export default function Game({
       if (action === 'fish') keys.F = false;
       if (action === 'attack') keys.Space = false;
       if (action === 'hook') keys.H = false;
+      if (action === 'harpoon') keys.Q = false;
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -821,6 +878,11 @@ export default function Game({
     let structuresBuilt = 0;
     let islandTimer = 0;
     let chestTimer = 0;
+    // RAFT-109: spawn cadence for the new threats; RAFT-107: harpoon throw lockout.
+    let jellyfishTimer = 0;
+    let seagullTimer = 0;
+    let pirateTimer = 0;
+    let harpoonCooldown = 0;
     let victoryFired = false;
     // RAFT-304: cumulative gathering counters for the objective chain.
     let woodGathered = 0;
@@ -1012,6 +1074,14 @@ export default function Game({
       shark = spawnSharkImpl(statsRef);
     };
 
+    // RAFT-109: spawn adapters for the new threats (kept here so the loop's
+    // entity arrays stay the single source of truth).
+    const spawnJellyfish = () => spawnJellyfishImpl(jellyfish);
+    const spawnSeagull = () => spawnSeagullImpl(seagulls);
+    const spawnPirate = () => {
+      pirate = spawnPirateRaftImpl([], statsRef);
+    };
+
     const getRaftScreenY = () => RAFT_CENTER_Y + raftBobY + Math.max(0, startupRiseOffset);
 
     // Expose eat function to parent — React state can't touch statsRef directly
@@ -1104,6 +1174,7 @@ export default function Game({
         raftWidth: raftRef.current.height,
         hasRod: gameStore.hasRod ?? false,
         hasSpear: gameStore.hasSpear ?? false,
+        hasHarpoon: gameStore.hasHarpoon ?? false,
         hasHammer: gameStore.hasHammer ?? false,
         hasRainBarrel: gameStore.hasRainBarrel ?? false,
         hasCampfire: gameStore.hasCampfire ?? false,
@@ -1207,7 +1278,7 @@ export default function Game({
     };
     const spawnDamageNumber = (x: number, y: number, value: number, color = '#FFD166') =>
       spawnDamageNumberImpl(damageNumbers, x, y, value, color);
-    const grantKillRewards = (enemy: 'frog' | 'shark' | 'kraken', x: number, y: number) =>
+    const grantKillRewards = (enemy: LootEnemy, x: number, y: number) =>
       grantKillRewardsImpl(lootDeps, enemy, x, y);
     const intactWalls = () => intactWallsImpl(buildGridRef);
     const fishYield = (f: Fish) => fishYieldImpl(f);
@@ -1925,6 +1996,26 @@ export default function Game({
           }
         }
 
+        // RAFT-109: the spear also swats drifting jellyfish and diving seagulls.
+        for (let i = jellyfish.length - 1; i >= 0; i--) {
+          const j = jellyfish[i];
+          if (inAttackArc(player, j, SPEAR_REACH)) {
+            spawnDamageNumber(j.x + j.width / 2, j.y, 1, '#FF8FD6');
+            grantKillRewards('jellyfish', j.x + j.width / 2, j.y + j.height / 2);
+            jellyfish.splice(i, 1);
+            hitLanded = true;
+          }
+        }
+        for (let i = seagulls.length - 1; i >= 0; i--) {
+          const s = seagulls[i];
+          if (inAttackArc(player, s, SPEAR_REACH)) {
+            spawnDamageNumber(s.x + s.width / 2, s.y, 1, '#FFFFFF');
+            grantKillRewards('seagull', s.x + s.width / 2, s.y + s.height / 2);
+            seagulls.splice(i, 1);
+            hitLanded = true;
+          }
+        }
+
         // KRAKEN (RAFT-101: heal is clamped; no more flat health = 100 exploit)
         if (kraken && kraken.state !== 'dying') {
           const kBox = {
@@ -2510,6 +2601,258 @@ export default function Game({
         }
         if (proj.x < -50 || proj.x > 850 || proj.y < -50 || proj.y > 650) projectiles.splice(i, 1);
       }
+
+      // ===== RAFT-109: jellyfish, seagulls and pirate rafts =====
+
+      // --- Jellyfish: drift in from the sides, bob, and sting on contact. ---
+      jellyfishTimer++;
+      if (
+        isEnemyUnlocked('jellyfish', day) &&
+        jellyfish.length < JELLYFISH_MAX &&
+        jellyfishTimer > JELLYFISH_SPAWN_INTERVAL / Math.max(1, scale.spawnMult) &&
+        Math.random() < 0.03 * scale.spawnMult
+      ) {
+        jellyfishTimer = 0;
+        spawnJellyfish();
+      }
+      for (let i = jellyfish.length - 1; i >= 0; i--) {
+        const j = jellyfish[i];
+        j.bobPhase += 0.06;
+        j.pulse += 0.08;
+        j.x += j.driftX;
+        j.y += Math.sin(j.bobPhase) * 0.6 - WORLD_SCROLL_SPEED * 0.35;
+        if (
+          j.x < player.x + player.width &&
+          j.x + j.width > player.x &&
+          j.y < player.y + player.height &&
+          j.y + j.height > player.y
+        ) {
+          if (invulnerabilityTimer <= 0) {
+            statsRef.current.health = applyDamage(
+              statsRef.current.health,
+              JELLYFISH_CONTACT_DAMAGE * enemyDamageMult,
+            );
+            invulnerabilityTimer = PLAYER_INVULN_FRAMES;
+          }
+        }
+        if (j.x < -120 || j.x > 920 || j.y < -120) jellyfish.splice(i, 1);
+      }
+
+      // --- Seagulls: cruise overhead, then dive at the player. ---
+      seagullTimer++;
+      if (
+        isEnemyUnlocked('seagull', day) &&
+        seagulls.length < SEAGULL_MAX &&
+        seagullTimer > SEAGULL_SPAWN_INTERVAL / Math.max(1, scale.spawnMult)
+      ) {
+        seagullTimer = 0;
+        spawnSeagull();
+      }
+      for (let i = seagulls.length - 1; i >= 0; i--) {
+        const s = seagulls[i];
+        s.flapPhase += 0.3;
+        if (s.hitFlash > 0) s.hitFlash--;
+        if (s.state === 'flying') {
+          s.x += s.vx;
+          s.timer--;
+          if (s.timer <= 0) {
+            s.state = 'diving';
+            s.diveTargetX = player.x + player.width / 2;
+            s.vy = SEAGULL_DIVE_SPEED;
+            s.vx *= 0.3;
+          }
+        } else if (s.state === 'diving') {
+          s.y += s.vy;
+          s.x += Math.sign(s.diveTargetX - (s.x + s.width / 2)) * 0.7;
+          if (
+            s.x < player.x + player.width &&
+            s.x + s.width > player.x &&
+            s.y < player.y + player.height &&
+            s.y + s.height > player.y
+          ) {
+            if (invulnerabilityTimer <= 0) {
+              statsRef.current.health = applyDamage(
+                statsRef.current.health,
+                SEAGULL_CONTACT_DAMAGE * enemyDamageMult,
+              );
+              invulnerabilityTimer = PLAYER_INVULN_FRAMES;
+            }
+            s.state = 'returning';
+            s.vy = -SEAGULL_DIVE_SPEED;
+          } else if (s.y > player.y + player.height) {
+            s.state = 'returning';
+            s.vy = -SEAGULL_DIVE_SPEED;
+          }
+        } else {
+          s.y += s.vy;
+          s.x += s.vx;
+          if (s.y < 60) {
+            s.state = 'flying';
+            s.timer = 120 + Math.floor(Math.random() * 120);
+            s.vx = s.vx >= 0 ? 1.3 : -1.3;
+            s.vy = 0;
+          }
+        }
+        if (s.x < -140 || s.x > 940) seagulls.splice(i, 1);
+      }
+
+      // --- Pirate raft: drifts in, then lobs cannonballs at the player. ---
+      pirateTimer++;
+      if (
+        !pirate &&
+        isEnemyUnlocked('pirate', day) &&
+        pirateTimer > PIRATE_SPAWN_INTERVAL / Math.max(1, scale.spawnMult) &&
+        Math.random() < 0.03 * scale.spawnMult
+      ) {
+        pirateTimer = 0;
+        spawnPirate();
+      }
+      if (pirate) {
+        if (pirate.hitFlash > 0) pirate.hitFlash--;
+        // Approach the raft column, then hold position and fire.
+        const raftCX = raftRef.current.x + raftRef.current.width / 2;
+        const pirCX = pirate.x + pirate.width / 2;
+        const gap = raftCX - pirCX;
+        if (Math.abs(gap) > 220) pirate.x += Math.sign(gap) * 0.5;
+        pirate.fireTimer--;
+        if (pirate.fireTimer <= 0 && Math.abs(gap) < 420) {
+          pirate.fireTimer = PIRATE_FIRE_INTERVAL;
+          const ox = pirate.x + pirate.width / 2;
+          const oy = pirate.y + pirate.height / 2;
+          const px = player.x + player.width / 2;
+          const py = player.y + player.height / 2;
+          const dx = px - ox;
+          const dy = py - oy;
+          const dd = Math.sqrt(dx * dx + dy * dy) || 1;
+          cannonballs.push({
+            x: ox,
+            y: oy,
+            vx: (dx / dd) * PIRATE_CANNON_SPEED,
+            vy: (dy / dd) * PIRATE_CANNON_SPEED,
+            size: 10,
+          });
+        }
+        if (pirate.x < -260 || pirate.x > 1060) pirate = null;
+      }
+      for (let i = cannonballs.length - 1; i >= 0; i--) {
+        const cb = cannonballs[i];
+        cb.x += cb.vx;
+        cb.y += cb.vy;
+        if (
+          cb.x < player.x + player.width &&
+          cb.x + cb.size > player.x &&
+          cb.y < player.y + player.height &&
+          cb.y + cb.size > player.y
+        ) {
+          if (invulnerabilityTimer <= 0) {
+            statsRef.current.health = applyDamage(
+              statsRef.current.health,
+              PIRATE_CANNON_DAMAGE * enemyDamageMult,
+            );
+            invulnerabilityTimer = PLAYER_INVULN_FRAMES * 2;
+          }
+          cannonballs.splice(i, 1);
+          continue;
+        }
+        if (cb.x < -60 || cb.x > 860 || cb.y < -60 || cb.y > 660) cannonballs.splice(i, 1);
+      }
+
+      // --- RAFT-107: throw + fly the harpoon. ---
+      if (harpoonCooldown > 0) harpoonCooldown--;
+      if (gameStore.hasHarpoon && keys.Q && harpoonCooldown <= 0 && !harpoon) {
+        harpoonCooldown = HARPOON_COOLDOWN;
+        const px = player.x + player.width / 2;
+        const py = player.y + player.height / 2;
+        let tx = px;
+        let ty = py - 260;
+        if (pirate) {
+          tx = pirate.x + pirate.width / 2;
+          ty = pirate.y + pirate.height / 2;
+        } else if (shark) {
+          tx = shark.x + shark.width / 2;
+          ty = shark.y + shark.height / 2;
+        }
+        const dx = tx - px;
+        const dy = ty - py;
+        const dd = Math.sqrt(dx * dx + dy * dy) || 1;
+        harpoon = {
+          x: px,
+          y: py,
+          vx: (dx / dd) * HARPOON_SPEED,
+          vy: (dy / dd) * HARPOON_SPEED,
+          travelled: 0,
+          angle: Math.atan2(dy, dx),
+        };
+        playChopSound();
+      }
+      if (harpoon) {
+        harpoon.x += harpoon.vx;
+        harpoon.y += harpoon.vy;
+        harpoon.travelled += Math.hypot(harpoon.vx, harpoon.vy);
+        const hx = harpoon.x;
+        const hy = harpoon.y;
+        const hits = (x: number, y: number, w: number, h: number) =>
+          hx > x && hx < x + w && hy > y && hy < y + h;
+        let consumed = false;
+        if (pirate && hits(pirate.x, pirate.y, pirate.width, pirate.height)) {
+          pirate.hp -= HARPOON_DAMAGE;
+          pirate.hitFlash = 14;
+          spawnDamageNumber(hx, hy, HARPOON_DAMAGE);
+          consumed = true;
+          if (pirate.hp <= 0) {
+            gameStore.chestMessage = { text: 'PIRATE RAFT SUNK!', time: 180 };
+            grantKillRewards('pirate', pirate.x + pirate.width / 2, pirate.y + pirate.height / 2);
+            pirate = null;
+          }
+        } else if (shark && hits(shark.x, shark.y, shark.width, shark.height)) {
+          shark.health -= HARPOON_DAMAGE;
+          shark.hitFlash = 12;
+          spawnDamageNumber(shark.x + shark.width / 2, shark.y, HARPOON_DAMAGE);
+          consumed = true;
+          if (shark.health <= 0) {
+            grantKillRewards('shark', shark.x + shark.width / 2, shark.y + shark.height / 2);
+            bumpAch('sharksDefeated');
+            shark = null;
+          } else {
+            shark.state = 'retreating';
+            shark.attackTimer = 180;
+          }
+        } else {
+          for (let i = jellyfish.length - 1; i >= 0; i--) {
+            const j = jellyfish[i];
+            if (hits(j.x, j.y, j.width, j.height)) {
+              spawnDamageNumber(j.x + j.width / 2, j.y, 1, '#FF8FD6');
+              grantKillRewards('jellyfish', j.x + j.width / 2, j.y + j.height / 2);
+              jellyfish.splice(i, 1);
+              consumed = true;
+              break;
+            }
+          }
+          if (!consumed) {
+            for (let i = seagulls.length - 1; i >= 0; i--) {
+              const s = seagulls[i];
+              if (hits(s.x, s.y, s.width, s.height)) {
+                spawnDamageNumber(s.x + s.width / 2, s.y, 1, '#FFFFFF');
+                grantKillRewards('seagull', s.x + s.width / 2, s.y + s.height / 2);
+                seagulls.splice(i, 1);
+                consumed = true;
+                break;
+              }
+            }
+          }
+        }
+        if (
+          consumed ||
+          harpoon.travelled > HARPOON_RANGE ||
+          harpoon.x < -60 ||
+          harpoon.x > 860 ||
+          harpoon.y < -60 ||
+          harpoon.y > 660
+        ) {
+          harpoon = null;
+        }
+      }
+
       if (invulnerabilityTimer > 0) invulnerabilityTimer--;
 
       // RAFT-103/108: animate floating loot + damage numbers.
@@ -2691,6 +3034,12 @@ export default function Game({
 
     const drawKraken = (kr: Kraken) => drawKrakenImpl(ctx, kr, time);
 
+    // RAFT-109/107: new-threat + harpoon draw adapters.
+    const drawJellyfish = (j: Jellyfish) => drawJellyfishImpl(ctx, j, time);
+    const drawSeagull = (s: Seagull) => drawSeagullImpl(ctx, s);
+    const drawPirateRaft = (p: PirateRaft) => drawPirateRaftImpl(ctx, p);
+    const drawHarpoon = (h: Harpoon) => drawHarpoonImpl(ctx, h);
+
     // RAFT-108: compact health bar shown above enemies while damaged.
     const drawEnemyHealthBar = (
       x: number,
@@ -2785,6 +3134,11 @@ export default function Game({
         ctx.fill();
       });
 
+      // RAFT-109: new threats render with the enemy layer (behind the raft).
+      jellyfish.forEach((j) => drawJellyfish(j));
+      seagulls.forEach((s) => drawSeagull(s));
+      if (pirate) drawPirateRaft(pirate);
+
       const raftDrawYForShark = getRaftScreenY();
       if (shark) {
         const sharkDrawInFront = shark.y > raftDrawYForShark - 20;
@@ -2810,6 +3164,23 @@ export default function Game({
 
       // KRAKEN DRAW CALL
       if (kraken) drawKraken(kraken);
+
+      // RAFT-109/107: pirate cannonballs + the player's harpoon fly in front.
+      cannonballs.forEach((cb) => {
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.beginPath();
+        ctx.arc(cb.x, cb.y, cb.size + 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#2C3E50';
+        ctx.beginPath();
+        ctx.arc(cb.x, cb.y, cb.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#5D6D7E';
+        ctx.beginPath();
+        ctx.arc(cb.x - 2, cb.y - 2, cb.size / 3, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      if (harpoon) drawHarpoon(harpoon);
 
       // === FISHING ROD (visible in player's hand) ===
       if (gameStore.hasRod && playerStateRef.current === 'standing') {
@@ -3360,6 +3731,11 @@ export default function Game({
         );
       }
 
+      // RAFT-109: pirate raft health bar — only the harpoon can sink it.
+      if (pirate && pirate.hp < pirate.maxHp) {
+        drawEnemyHealthBar(pirate.x, pirate.y - 12, pirate.width, pirate.hp, pirate.maxHp, '#8E44AD');
+      }
+
       // RAFT-201/202: draw placed structures + the build-mode ghost preview.
       for (const t of buildGridRef.current.tiles) {
         const w = cellToWorld(t.col, t.row);
@@ -3439,6 +3815,20 @@ export default function Game({
         for (const proj of projectiles) {
           ctx.strokeStyle = 'rgba(255,255,0,0.9)';
           ctx.strokeRect(proj.x, proj.y, proj.size, proj.size);
+        }
+        ctx.strokeStyle = '#FF8FD6';
+        for (const j of jellyfish) ctx.strokeRect(j.x, j.y, j.width, j.height);
+        ctx.strokeStyle = '#FFFFFF';
+        for (const s of seagulls) ctx.strokeRect(s.x, s.y, s.width, s.height);
+        if (pirate) {
+          ctx.strokeStyle = '#8E44AD';
+          ctx.strokeRect(pirate.x, pirate.y, pirate.width, pirate.height);
+        }
+        ctx.strokeStyle = '#00FFAA';
+        for (const cb of cannonballs) ctx.strokeRect(cb.x, cb.y, cb.size, cb.size);
+        if (harpoon) {
+          ctx.strokeStyle = '#FFD166';
+          ctx.strokeRect(harpoon.x - 4, harpoon.y - 4, 8, 8);
         }
         const wallCount = intactWalls();
         if (wallCount > 0) {

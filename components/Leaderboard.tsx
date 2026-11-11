@@ -39,6 +39,12 @@ export default function Leaderboard({ onClose }: LeaderboardProps) {
         >
           🏆 LEADERBOARD
         </h2>
+        <div
+          className="text-center text-[8px] text-[#8B4513]/80 -mt-2 mb-4"
+          style={{ fontFamily: '"Press Start 2P", monospace' }}
+        >
+          Saved on this device
+        </div>
         {scores.length === 0 ? (
           <div
             className="text-center text-[10px] text-[#5D4037] py-8"

@@ -7,6 +7,7 @@ import {
   RAFT_REPAIR_AMOUNT,
   EXPAND_COST_BASE,
   EXPAND_COST_STEP,
+  HARPOON_COST,
   TECH_UNLOCK,
   type WeaponTier,
 } from '@/lib/balance';
@@ -18,6 +19,8 @@ type CraftingMenuProps = {
   plastic: number;
   hasRod: boolean;
   hasSpear: boolean;
+  /** RAFT-107: throwable harpoon (sinks pirate rafts). */
+  hasHarpoon: boolean;
   hasHammer: boolean;
   hasRainBarrel: boolean;
   hasCampfire: boolean;
@@ -42,6 +45,7 @@ export default function CraftingMenu({
   plastic,
   hasRod,
   hasSpear,
+  hasHarpoon,
   hasHammer,
   hasRainBarrel,
   hasCampfire,
@@ -68,6 +72,12 @@ export default function CraftingMenu({
     !locked('SPEAR_UPGRADE') &&
     wood >= nextTierCost.wood &&
     plastic >= nextTierCost.plastic;
+  // RAFT-107: craftable once the tech tier is unlocked and the player has speared.
+  const canHarpoon =
+    !hasHarpoon &&
+    !locked('HARPOON') &&
+    wood >= HARPOON_COST.wood &&
+    plastic >= HARPOON_COST.plastic;
   // RAFT-205/207: visible, size-scaled costs.
   const canRepair =
     needsRepair && wood >= RAFT_REPAIR_COST.wood && plastic >= RAFT_REPAIR_COST.plastic;
@@ -162,6 +172,19 @@ export default function CraftingMenu({
                   ? lockText('SPEAR_UPGRADE')
                   : `${nextTierCost.wood} Wood, ${nextTierCost.plastic} Plastic · DMG ${nextTierCost.damage}`
                 : 'Fully upgraded'}
+            </span>
+          </button>
+          <button
+            onClick={() => onCraft('HARPOON')}
+            disabled={!canHarpoon}
+            className={btn(!!canHarpoon, 'bg-[#16A085] border-[#0E6655] text-white')}
+            style={{ fontFamily: '"Press Start 2P", monospace' }}
+          >
+            <span>{hasHarpoon ? '✓ HARPOON' : 'HARPOON 🎣'}</span>
+            <span className="text-[9px]">
+              {locked('HARPOON')
+                ? lockText('HARPOON')
+                : `${HARPOON_COST.wood} Wood, ${HARPOON_COST.plastic} Plastic · Sinks pirates`}
             </span>
           </button>
           <button

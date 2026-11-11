@@ -30,6 +30,8 @@ export type GameStore = {
   /** Tool ownership, mirrored from <Game> props for the draw pass. */
   hasRod: boolean;
   hasSpear: boolean;
+  /** RAFT-107: throwable harpoon owned. */
+  hasHarpoon: boolean;
   hasHammer: boolean;
   hasCampfire: boolean;
   hasRainBarrel: boolean;
@@ -58,6 +60,7 @@ export const gameStore: GameStore = {
   floors: 0,
   hasRod: false,
   hasSpear: false,
+  hasHarpoon: false,
   hasHammer: false,
   hasCampfire: false,
   hasRainBarrel: false,

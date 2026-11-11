@@ -4,7 +4,6 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import MainMenu from '@/components/MainMenu';
 import SettingsMenu from '@/components/SettingsMenu';
 import CreditsScreen from '@/components/CreditsScreen';
-import CoopMenu from '@/components/CoopMenu';
 import AchievementsPanel from '@/components/AchievementsPanel';
 import AchievementToast from '@/components/AchievementToast';
 import Game from '@/components/Game';
@@ -57,12 +56,10 @@ import {
 
 // RAFT-406: the live tuning panel is a developer tool — never shipped.
 const IS_DEV = process.env.NODE_ENV !== 'production';
-// RAFT-506: Co-op has no networking yet, so keep it out of the main menu.
-const COOP_ENABLED = false;
 
 export default function Home() {
   const [scene, setScene] = useState<
-    'menu' | 'playing' | 'settings' | 'credits' | 'coop' | 'achievements' | 'skins' | 'leaderboard'
+    'menu' | 'playing' | 'settings' | 'credits' | 'achievements' | 'skins' | 'leaderboard'
   >('menu');
   const [gameId, setGameId] = useState(0);
   const [showDevPanel, setShowDevPanel] = useState(false);
@@ -81,6 +78,7 @@ export default function Home() {
   const [raftHealth, setRaftHealth] = useState(100);
   const [hasRod, setHasRod] = useState(false);
   const [hasSpear, setHasSpear] = useState(false);
+  const [hasHarpoon, setHasHarpoon] = useState(false);
   const [hasHammer, setHasHammer] = useState(false);
   const [hasRainBarrel, setHasRainBarrel] = useState(false);
   const [hasCampfire, setHasCampfire] = useState(false);
@@ -390,6 +388,7 @@ export default function Home() {
   const handleCraft = (type: string) => {
     if (type === 'ROD') setHasRod(true);
     if (type === 'SPEAR') setHasSpear(true);
+    if (type === 'HARPOON') setHasHarpoon(true);
     if (type === 'HAMMER') setHasHammer(true);
     if (type === 'RAIN_BARREL') setHasRainBarrel(true);
     if (type === 'CAMPFIRE') setHasCampfire(true);
@@ -510,6 +509,7 @@ export default function Home() {
     setHasRod(false);
     setHasSpear(false);
     setSpearTier('wooden');
+    setHasHarpoon(false);
     setHasHammer(false);
     setHasRainBarrel(false);
     setHasCampfire(false);
@@ -574,6 +574,7 @@ export default function Home() {
     setRaftWidth(data.raftWidth);
     setHasRod(data.hasRod);
     setHasSpear(data.hasSpear);
+    setHasHarpoon(data.hasHarpoon);
     setSpearTier(data.spearTier);
     setHasHammer(data.hasHammer);
     setHasRainBarrel(data.hasRainBarrel);
@@ -649,8 +650,6 @@ export default function Home() {
     <main className="flex min-h-screen flex-col items-center justify-center bg-black relative overflow-hidden">
       {scene === 'achievements' ? (
         <AchievementsPanel onClose={() => setScene('menu')} />
-      ) : scene === 'coop' ? (
-        <CoopMenu onClose={() => setScene('menu')} />
       ) : scene === 'leaderboard' ? (
         <Leaderboard onClose={() => setScene('menu')} />
       ) : scene === 'credits' ? (
@@ -665,12 +664,10 @@ export default function Home() {
           onLoad={() => handleOpenSaveSlots('load')}
           onSettings={() => setScene('settings')}
           onCredits={() => setScene('credits')}
-          onCoop={() => setScene('coop')}
           onAchievements={() => setScene('achievements')}
           onSkins={() => setScene('skins')}
           onLeaderboard={() => setScene('leaderboard')}
           hasSave={hasSave}
-          showCoop={COOP_ENABLED}
         />
       ) : (
         <div
@@ -690,6 +687,7 @@ export default function Home() {
             raftWidth={raftWidth}
             hasRod={hasRod}
             hasSpear={hasSpear}
+            hasHarpoon={hasHarpoon}
             hasHammer={hasHammer}
             hasRainBarrel={hasRainBarrel}
             hasCampfire={hasCampfire}
@@ -762,6 +760,7 @@ export default function Home() {
               plastic={plastic}
               hasRod={hasRod}
               hasSpear={hasSpear}
+              hasHarpoon={hasHarpoon}
               hasHammer={hasHammer}
               hasRainBarrel={hasRainBarrel}
               hasCampfire={hasCampfire}

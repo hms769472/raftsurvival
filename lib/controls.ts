@@ -6,7 +6,16 @@
 // and are read by the canvas game loop, so a rebind takes effect immediately.
 
 export type ControlAction =
-  'left' | 'right' | 'up' | 'down' | 'attack' | 'fish' | 'hook' | 'build' | 'craft';
+  | 'left'
+  | 'right'
+  | 'up'
+  | 'down'
+  | 'attack'
+  | 'fish'
+  | 'hook'
+  | 'harpoon'
+  | 'build'
+  | 'craft';
 
 export const CONTROL_ACTIONS: ControlAction[] = [
   'left',
@@ -16,6 +25,7 @@ export const CONTROL_ACTIONS: ControlAction[] = [
   'attack',
   'fish',
   'hook',
+  'harpoon',
   'build',
   'craft',
 ];
@@ -28,6 +38,7 @@ export const DEFAULT_BINDINGS: Record<ControlAction, string> = {
   attack: 'space',
   fish: 'f',
   hook: 'h',
+  harpoon: 'q',
   build: 'b',
   craft: 'c',
 };
@@ -40,6 +51,7 @@ export const BINDING_LABELS: Record<ControlAction, string> = {
   attack: 'Attack',
   fish: 'Fish',
   hook: 'Hook',
+  harpoon: 'Throw Harpoon',
   build: 'Build Mode',
   craft: 'Crafting',
 };

@@ -2,9 +2,13 @@ import type { SkinDefinition } from '@/types/game-globals';
 import type {
   Fish,
   Frog,
+  Harpoon,
   Island,
   Item,
+  Jellyfish,
   Kraken,
+  PirateRaft,
+  Seagull,
   Shark,
   TreasureChest,
 } from '@/lib/engine/entities';
@@ -1502,3 +1506,189 @@ export function drawEnemyHealthBar(
   ctx.fillStyle = color;
   ctx.fillRect(bx, y, w * Math.max(0, Math.min(1, hp / maxHp)), 4);
 }
+
+// ===== RAFT-109 / RAFT-107 draw helpers =====
+
+/** A pulsing jellyfish: translucent bell + trailing tentacles. */
+export function drawJellyfish(ctx: CanvasRenderingContext2D, j: Jellyfish, time: number) {
+  const cx = j.x + j.width / 2;
+  const cy = j.y + j.height / 2;
+  const pulse = 1 + Math.sin(time * 0.08 + j.bobPhase) * 0.08;
+  const bellW = (j.width / 2) * pulse;
+  const bellH = (j.height / 2) * pulse;
+
+  ctx.save();
+  // Soft glow so it reads against the water.
+  ctx.fillStyle = 'rgba(255, 143, 214, 0.18)';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, bellW + 10, bellH + 10, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Tentacles
+  ctx.strokeStyle = 'rgba(255, 143, 214, 0.75)';
+  ctx.lineWidth = 2;
+  for (let t = -2; t <= 2; t++) {
+    const tx = cx + t * (bellW / 3);
+    const sway = Math.sin(time * 0.12 + t + j.bobPhase) * 4;
+    ctx.beginPath();
+    ctx.moveTo(tx, cy + bellH * 0.6);
+    ctx.quadraticCurveTo(tx + sway, cy + bellH * 1.4, tx + sway * 1.5, cy + bellH * 2.1);
+    ctx.stroke();
+  }
+
+  // Bell
+  const grad = ctx.createLinearGradient(cx, cy - bellH, cx, cy + bellH);
+  grad.addColorStop(0, '#FFB3E6');
+  grad.addColorStop(1, '#C77DFF');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, bellW, bellH, 0, Math.PI, Math.PI * 2);
+  ctx.quadraticCurveTo(cx, cy + bellH * 0.5, cx - bellW, cy);
+  ctx.closePath();
+  ctx.fill();
+
+  // Highlight + eyes
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.beginPath();
+  ctx.ellipse(cx - bellW * 0.35, cy - bellH * 0.35, bellW * 0.22, bellH * 0.18, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#3A1A4D';
+  ctx.beginPath();
+  ctx.arc(cx - 4, cy - 2, 1.8, 0, Math.PI * 2);
+  ctx.arc(cx + 4, cy - 2, 1.8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/** A white seagull with flapping wings; dives beak-first when attacking. */
+export function drawSeagull(ctx: CanvasRenderingContext2D, s: Seagull) {
+  const cx = s.x + s.width / 2;
+  const cy = s.y + s.height / 2;
+  const facingRight = s.vx >= 0;
+  const flap = Math.sin(s.flapPhase) * (s.state === 'diving' ? 0.35 : 1);
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(facingRight ? 1 : -1, 1);
+  if (s.state === 'diving') ctx.rotate(0.5);
+
+  // Body
+  ctx.fillStyle = s.hitFlash > 0 ? '#FFB3B3' : '#F4F6F7';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, s.width / 2, s.height / 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Wings (flap up/down)
+  ctx.fillStyle = '#D5DBDB';
+  ctx.beginPath();
+  ctx.moveTo(-2, -2);
+  ctx.quadraticCurveTo(-4, -18 * flap - 4, 16, -12 * flap - 2);
+  ctx.quadraticCurveTo(4, -2, -2, -2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(2, 0);
+  ctx.quadraticCurveTo(0, 16 * flap + 4, -12, 12 * flap + 2);
+  ctx.quadraticCurveTo(0, 4, 2, 0);
+  ctx.closePath();
+  ctx.fill();
+
+  // Head + beak + eye
+  ctx.fillStyle = '#F4F6F7';
+  ctx.beginPath();
+  ctx.arc(s.width / 2 - 4, -2, 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#F39C12';
+  ctx.beginPath();
+  ctx.moveTo(s.width / 2 + 1, -3);
+  ctx.lineTo(s.width / 2 + 12, 0);
+  ctx.lineTo(s.width / 2 + 1, 3);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#222';
+  ctx.beginPath();
+  ctx.arc(s.width / 2 - 4, -4, 1.6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/** A distant pirate raft: dark hull, tattered sail, skull flag. */
+export function drawPirateRaft(ctx: CanvasRenderingContext2D, p: PirateRaft) {
+  const x = p.x;
+  const y = p.y;
+  const w = p.width;
+  const h = p.height;
+
+  ctx.save();
+
+  // Hull
+  ctx.fillStyle = p.hitFlash > 0 ? '#B03A2E' : '#4A3728';
+  ctx.beginPath();
+  ctx.moveTo(x, y + h * 0.55);
+  ctx.lineTo(x + w, y + h * 0.55);
+  ctx.lineTo(x + w - 18, y + h);
+  ctx.lineTo(x + 18, y + h);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#2E2118';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  // Mast
+  ctx.fillStyle = '#3A2A1C';
+  ctx.fillRect(x + w / 2 - 3, y - 26, 6, h * 0.8 + 26);
+
+  // Sail
+  ctx.fillStyle = '#7F8C8D';
+  ctx.beginPath();
+  ctx.moveTo(x + w / 2 + 3, y - 22);
+  ctx.lineTo(x + w / 2 + 46, y + 12);
+  ctx.lineTo(x + w / 2 + 3, y + 30);
+  ctx.closePath();
+  ctx.fill();
+
+  // Skull flag
+  ctx.fillStyle = '#111';
+  ctx.fillRect(x + w / 2 - 3, y - 44, 34, 18);
+  ctx.fillStyle = '#F4F6F7';
+  ctx.beginPath();
+  ctx.arc(x + w / 2 + 14, y - 37, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillRect(x + w / 2 + 10, y - 33, 8, 3);
+
+  ctx.restore();
+}
+
+/** RAFT-107: the player's harpoon in flight. */
+export function drawHarpoon(ctx: CanvasRenderingContext2D, h: Harpoon) {
+  ctx.save();
+  ctx.translate(h.x, h.y);
+  ctx.rotate(h.angle);
+
+  // Shaft
+  ctx.strokeStyle = '#8B5A2B';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(-16, 0);
+  ctx.lineTo(12, 0);
+  ctx.stroke();
+
+  // Barbed tip
+  ctx.fillStyle = '#BDC3C7';
+  ctx.beginPath();
+  ctx.moveTo(12, -5);
+  ctx.lineTo(24, 0);
+  ctx.lineTo(12, 5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#ECF0F1';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(12, -5);
+  ctx.lineTo(24, 0);
+  ctx.lineTo(12, 5);
+  ctx.stroke();
+
+  ctx.restore();
+}
+

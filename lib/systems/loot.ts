@@ -34,14 +34,12 @@ export function spawnDamageNumber(
   damageNumbers.push({ x, y, value, life: 45, color });
 }
 
+/** RAFT-103/109: every enemy that can drop loot. */
+export type LootEnemy = 'frog' | 'jellyfish' | 'seagull' | 'shark' | 'pirate' | 'kraken';
+
 // RAFT-103: rolls the enemy loot table, floats the drops toward the raft and
 // auto-collects them into the stats. Also fires the XP hook.
-export function grantKillRewards(
-  deps: LootDeps,
-  enemy: 'frog' | 'shark' | 'kraken',
-  x: number,
-  y: number,
-) {
+export function grantKillRewards(deps: LootDeps, enemy: LootEnemy, x: number, y: number) {
   for (const drop of rollLoot(enemy)) {
     if (drop.type === 'wood') {
       deps.statsRef.current.wood += drop.amount;
@@ -65,9 +63,15 @@ export function grantKillRewards(
   deps.onXp(
     enemy === 'frog'
       ? XP_REWARDS.killFrog
-      : enemy === 'shark'
-        ? XP_REWARDS.killShark
-        : XP_REWARDS.killKraken,
+      : enemy === 'jellyfish'
+        ? XP_REWARDS.killJellyfish
+        : enemy === 'seagull'
+          ? XP_REWARDS.killSeagull
+          : enemy === 'shark'
+            ? XP_REWARDS.killShark
+            : enemy === 'pirate'
+              ? XP_REWARDS.killPirate
+              : XP_REWARDS.killKraken,
   );
   deps.refreshStats();
 }

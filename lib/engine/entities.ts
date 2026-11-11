@@ -125,6 +125,61 @@ export type Kraken = {
   hitFlash: number;
 };
 export type DamageNumber = { x: number; y: number; value: number; life: number; color: string };
+
+// ===== RAFT-109: additional threats =====
+
+/** A slow drifting sting hazard. Killed by a single spear/harpoon hit. */
+export type Jellyfish = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  bobPhase: number;
+  driftX: number;
+  pulse: number;
+};
+
+/** Circles high above the raft, then dives at the player; returns to altitude. */
+export type Seagull = {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  width: number;
+  height: number;
+  state: 'flying' | 'diving' | 'returning';
+  timer: number;
+  diveTargetX: number;
+  hitFlash: number;
+  flapPhase: number;
+};
+
+/** A distant enemy raft that lobs cannonballs. Only the harpoon can sink it. */
+export type PirateRaft = {
+  x: number;
+  y: number;
+  vx: number;
+  width: number;
+  height: number;
+  hp: number;
+  maxHp: number;
+  fireTimer: number;
+  hitFlash: number;
+};
+
+/** RAFT-107: a player-thrown harpoon in flight. */
+export type Harpoon = {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  travelled: number;
+  angle: number;
+};
+
+/** RAFT-109: a cannonball fired by a pirate raft. Reuses the enemy-shot rules. */
+export type Cannonball = { x: number; y: number; vx: number; vy: number; size: number };
+
 /** RAFT-103: floating loot icon that flies toward the raft and is auto-collected. */
 export type LootPickup = {
   x: number;

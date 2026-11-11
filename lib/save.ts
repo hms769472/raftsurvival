@@ -43,6 +43,8 @@ export type GameSnapshot = {
   raftWidth: number;
   hasRod: boolean;
   hasSpear: boolean;
+  /** RAFT-107: unlocks the throwable harpoon (the only weapon that sinks pirates). */
+  hasHarpoon: boolean;
   hasHammer: boolean;
   hasRainBarrel: boolean;
   hasCampfire: boolean;
@@ -82,6 +84,7 @@ export const DEFAULT_SNAPSHOT: GameSnapshot = {
   raftWidth: 150,
   hasRod: false,
   hasSpear: false,
+  hasHarpoon: false,
   hasHammer: false,
   hasRainBarrel: false,
   hasCampfire: false,
@@ -123,6 +126,7 @@ export function normalizeSnapshot(raw: unknown): GameSnapshot {
     raftWidth: asNumber(r.raftWidth, DEFAULT_SNAPSHOT.raftWidth),
     hasRod: asBool(r.hasRod, DEFAULT_SNAPSHOT.hasRod),
     hasSpear: asBool(r.hasSpear, DEFAULT_SNAPSHOT.hasSpear),
+    hasHarpoon: asBool(r.hasHarpoon, DEFAULT_SNAPSHOT.hasHarpoon),
     hasHammer: asBool(r.hasHammer, DEFAULT_SNAPSHOT.hasHammer),
     hasRainBarrel: asBool(r.hasRainBarrel, DEFAULT_SNAPSHOT.hasRainBarrel),
     hasCampfire: asBool(r.hasCampfire, DEFAULT_SNAPSHOT.hasCampfire),

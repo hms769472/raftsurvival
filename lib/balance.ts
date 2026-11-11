@@ -142,7 +142,14 @@ export function nextWeaponTier(tier: WeaponTier): WeaponTier | null {
 }
 
 // ===== Threat scaling (RAFT-104) =====
-export const ENEMY_UNLOCK_DAY = { frog: 1, shark: 4, kraken: 8 } as const;
+export const ENEMY_UNLOCK_DAY = {
+  frog: 1,
+  jellyfish: 2,
+  seagull: 3,
+  shark: 4,
+  pirate: 6,
+  kraken: 8,
+} as const;
 export const THREAT_SCALE_EVERY_DAYS = 3;
 export const THREAT_HP_STEP = 0.12; // +12% HP per step
 export const THREAT_DAMAGE_STEP = 0.15; // +15% damage per step
@@ -151,10 +158,26 @@ export const THREAT_SPAWN_STEP = 0.15; // +15% spawn chance per step
 // ===== Loot tables (RAFT-103) =====
 export type LootType = 'wood' | 'plastic' | 'fish';
 export type LootDrop = { type: LootType; min: number; max: number; chance: number };
-export const LOOT_TABLES: Record<'frog' | 'shark' | 'kraken', LootDrop[]> = {
+export const LOOT_TABLES: Record<
+  'frog' | 'shark' | 'kraken' | 'jellyfish' | 'seagull' | 'pirate',
+  LootDrop[]
+> = {
   frog: [
     { type: 'plastic', min: 1, max: 2, chance: 0.8 },
     { type: 'wood', min: 1, max: 1, chance: 0.4 },
+  ],
+  jellyfish: [
+    { type: 'plastic', min: 1, max: 2, chance: 0.6 },
+    { type: 'fish', min: 1, max: 1, chance: 0.5 },
+  ],
+  seagull: [
+    { type: 'fish', min: 1, max: 2, chance: 0.8 },
+    { type: 'plastic', min: 1, max: 2, chance: 0.3 },
+  ],
+  pirate: [
+    { type: 'wood', min: 8, max: 16, chance: 1 },
+    { type: 'plastic', min: 6, max: 12, chance: 1 },
+    { type: 'fish', min: 1, max: 3, chance: 0.6 },
   ],
   shark: [
     { type: 'fish', min: 1, max: 2, chance: 0.9 },
@@ -183,7 +206,10 @@ export const XP_REWARDS = {
   build: 8, // per structure placed
   upgrade: 10,
   killFrog: 5,
+  killJellyfish: 4,
+  killSeagull: 6,
   killShark: 20,
+  killPirate: 40,
   killKraken: 100,
   explore: 15, // per island / chest looted
   surviveDay: 30,
@@ -199,6 +225,7 @@ export const TECH_UNLOCK: Record<string, number> = {
   RAIN_BARREL: 2,
   CAMPFIRE: 2,
   SPEAR_UPGRADE: 3,
+  HARPOON: 4,
 };
 
 // ===== Islands / chests / wrecks (RAFT-305) =====
@@ -315,6 +342,37 @@ export const RARE_ITEM_BONUS = 3; // extra wood AND plastic granted on hook
 
 // ===== Death log (RAFT-402) =====
 export const DEATH_LOG_LIMIT = 10;
+
+// ===== Ranged weapon: Harpoon (RAFT-107) =====
+// A crafted throwable that lets the player hit targets outside melee reach —
+// notably the distant pirate raft (RAFT-109). Only one harpoon is in flight at
+// a time, so it never becomes a spam-fest.
+export const HARPOON_COST = { wood: 10, plastic: 6 };
+export const HARPOON_COOLDOWN = 45; // frames between throws
+export const HARPOON_SPEED = 11; // px/frame
+export const HARPOON_DAMAGE = 2;
+export const HARPOON_RANGE = 460; // px travelled before it falls back
+
+// ===== New enemies (RAFT-109) =====
+
+// Jellyfish: a slow drifting sting hazard. Cheap to kill, but it clusters.
+export const JELLYFISH_CONTACT_DAMAGE = 0.4;
+export const JELLYFISH_SPAWN_INTERVAL = 420; // frames
+export const JELLYFISH_MAX = 4;
+
+// Seagull: circles high, then dives at the player. Must be speared low.
+export const SEAGULL_CONTACT_DAMAGE = 0.6;
+export const SEAGULL_SPAWN_INTERVAL = 540; // frames
+export const SEAGULL_DIVE_SPEED = 2.6; // px/frame
+export const SEAGULL_MAX = 3;
+
+// Pirate raft: drifts on the horizon and lobs cannonballs. Out of melee reach
+// — it can only be sunk with the harpoon.
+export const PIRATE_RAFT_HP = 4;
+export const PIRATE_CANNON_DAMAGE = 0.8;
+export const PIRATE_SPAWN_INTERVAL = 1080; // frames
+export const PIRATE_FIRE_INTERVAL = 150; // frames between cannonballs
+export const PIRATE_CANNON_SPEED = 4.5;
 
 // ===== Dev tuning panel (RAFT-406) =====
 // The single mutable surface a developer can tweak live from the in-game F4

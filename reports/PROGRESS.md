@@ -30,9 +30,9 @@ Legend: `Todo` · `In progress` · `Done` · `Partial` · `Skipped`
 | RAFT-104 | Day-based threat scaling (spawn rate, HP, damage, enemy tiers) | Done |
 | RAFT-105 | Shark AI: remove "safe middle" exploit | Done |
 | RAFT-106 | Weapon tiers: Wooden → Stone/Scrap → Reinforced spear | Done |
-| RAFT-107 | Ranged weapon: bow/harpoon gun with ammo | Skipped (P2) |
+| RAFT-107 | Ranged weapon: bow/harpoon gun with ammo | Done (throwable harpoon, key Q) |
 | RAFT-108 | Enemy health bars, damage numbers, hit-flash, hit-stop, SFX | Done |
-| RAFT-109 | New enemy types (seagull, pirate raft, jellyfish) | Skipped (P2) |
+| RAFT-109 | New enemy types (seagull, pirate raft, jellyfish) | Done |
 | RAFT-110 | Frog projectiles & shark bites interact with walls | Done |
 | RAFT-111 | Apply `DIFF.damageMult` to ALL damage sources | Done |
 
