@@ -91,6 +91,7 @@ import {
 } from '@/lib/systems/combat';
 import { matchAction, loadBindings } from '@/lib/controls';
 import { debug } from '@/lib/logger';
+import { gameStore, gameCommands, resetGameCommands } from '@/lib/store';
 import {
   EMPTY_GRID,
   findTile,
@@ -478,18 +479,16 @@ export default function Game({
     raftRef.current.x = 400 - RAFT_WIDTH / 2;
   }, [raftWidth]);
 
-  // Keep building refs in sync when props change
+  // Mirror tool/structure props into the store for the imperative loop.
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      window.__wallsRef = walls;
-      window.__roofsRef = roofs;
-      window.__floorsRef = floors;
-      window.__hasRodRef = hasRod;
-      window.__hasSpearRef = hasSpear;
-      window.__hasHammerRef = hasHammer;
-      window.__hasCampfireRef = hasCampfire;
-      window.__hasRainBarrelRef = hasRainBarrel;
-    }
+    gameStore.walls = walls;
+    gameStore.roofs = roofs;
+    gameStore.floors = floors;
+    gameStore.hasRod = hasRod;
+    gameStore.hasSpear = hasSpear;
+    gameStore.hasHammer = hasHammer;
+    gameStore.hasCampfire = hasCampfire;
+    gameStore.hasRainBarrel = hasRainBarrel;
   }, [walls, roofs, floors, hasRod, hasSpear, hasHammer, hasCampfire, hasRainBarrel]);
 
   // Water waves ambient sound
@@ -567,7 +566,7 @@ export default function Game({
   }, []);
   const isSfxEnabled = useCallback(() => {
     if (typeof window === 'undefined') return true;
-    return window.__sfxEnabled !== false;
+    return gameStore.sfxEnabled !== false;
   }, []);
 
   const playFootstepSound = useCallback(() => {
@@ -917,12 +916,12 @@ export default function Game({
     const showHint = (id: string, text: string, duration = 300) => {
       if (hintsShown.has(id)) return;
       hintsShown.add(id);
-      window.__hint = { text, time: duration };
+      gameStore.hint = { text, time: duration };
     };
 
     // RAFT-504: the on-screen virtual joystick writes into the same key state
     // the keyboard uses, so movement logic stays in one place.
-    window.__setMove = (dir, pressed) => {
+    gameCommands.setMove = (dir, pressed) => {
       if (dir === 'left') keys.ArrowLeft = pressed;
       else if (dir === 'right') keys.ArrowRight = pressed;
       else if (dir === 'up') keys.ArrowUp = pressed;
@@ -1029,11 +1028,11 @@ export default function Game({
       if (action === 'hook') keys.H = true;
       if (e.key === 'F3') {
         e.preventDefault();
-        window.__debugHitboxes = !window.__debugHitboxes;
+        gameStore.debugHitboxes = !gameStore.debugHitboxes;
       } // RAFT-102 debug overlay
       // RAFT-201/202: Build Mode toggle + structure selection.
       if (action === 'build') {
-        const mustHaveHammer = typeof window !== 'undefined' ? window.__hasHammerRef : false;
+        const mustHaveHammer = gameStore.hasHammer;
         if (mustHaveHammer) buildModeRef.current.active = !buildModeRef.current.active;
       }
       if (buildModeRef.current.active && e.key >= '1' && e.key <= '6') {
@@ -1107,7 +1106,7 @@ export default function Game({
     let driedFish = initialStateRef.current?.driedFish ?? 0; // RAFT-405
     let cookingTimer = 0;
     let barrelWater = initialStateRef.current?.barrelWater ?? 0; // 0-100 — how much water is in the rain barrel
-    if (typeof window !== 'undefined') window.__barrelWater = barrelWater;
+    gameStore.barrelWater = barrelWater;
 
     // RAFT-304/305/306: monotonic run counters feeding objectives, exploration
     // and the win condition.
@@ -1520,7 +1519,7 @@ export default function Game({
 
     // Expose eat function to parent — React state can't touch statsRef directly
     if (typeof window !== 'undefined') {
-      window.__eatFishFromGame = () => {
+      gameCommands.eatRawFish = () => {
         debug('eat raw', statsRef.current.fish);
         if (statsRef.current.fish > 0) {
           statsRef.current.fish -= 1;
@@ -1535,16 +1534,16 @@ export default function Game({
           onStatsUpdate(statsPayload());
         }
       };
-      window.__drinkWaterFromGame = () => {
+      gameCommands.drinkWater = () => {
         if (barrelWater >= WATER_BARREL_COST && statsRef.current.thirst < 100) {
           barrelWater -= WATER_BARREL_COST;
           statsRef.current.thirst = Math.min(100, statsRef.current.thirst + WATER_THIRST_RESTORE);
-          window.__barrelWater = barrelWater;
+          gameStore.barrelWater = barrelWater;
           onStatsUpdate(statsPayload());
         }
       };
-      window.__cookFish = () => {
-        const hasFire = window.__hasCampfireRef;
+      gameCommands.cookFish = () => {
+        const hasFire = gameStore.hasCampfire;
         if (hasFire && statsRef.current.fish > 0 && cookingTimer <= 0) {
           statsRef.current.fish -= 1;
           cookedFish += 1;
@@ -1552,7 +1551,7 @@ export default function Game({
           onStatsUpdate(statsPayload());
         }
       };
-      window.__eatCookedFish = () => {
+      gameCommands.eatCookedFish = () => {
         if (cookedFish > 0) {
           cookedFish -= 1;
           statsRef.current.hunger = Math.min(
@@ -1569,7 +1568,7 @@ export default function Game({
         }
       };
       // RAFT-405: dried fish (drying rack output) is the best food tier.
-      window.__eatDriedFish = () => {
+      gameCommands.eatDriedFish = () => {
         if (driedFish > 0) {
           driedFish -= 1;
           statsRef.current.hunger = Math.min(
@@ -1606,14 +1605,14 @@ export default function Game({
         plastic: statsRef.current.plastic,
         raftHealth: statsRef.current.raftHealth,
         raftWidth: raftRef.current.height,
-        hasRod: window.__hasRodRef ?? false,
-        hasSpear: window.__hasSpearRef ?? false,
-        hasHammer: window.__hasHammerRef ?? false,
-        hasRainBarrel: window.__hasRainBarrelRef ?? false,
-        hasCampfire: window.__hasCampfireRef ?? false,
-        walls: window.__wallsRef ?? 0,
-        roofs: window.__roofsRef ?? 0,
-        floors: window.__floorsRef ?? 0,
+        hasRod: gameStore.hasRod ?? false,
+        hasSpear: gameStore.hasSpear ?? false,
+        hasHammer: gameStore.hasHammer ?? false,
+        hasRainBarrel: gameStore.hasRainBarrel ?? false,
+        hasCampfire: gameStore.hasCampfire ?? false,
+        walls: gameStore.walls ?? 0,
+        roofs: gameStore.roofs ?? 0,
+        floors: gameStore.floors ?? 0,
         barrelWater,
         spearTier: spearTierRef.current,
         buildGrid: toStored(buildGridRef.current),
@@ -1701,9 +1700,9 @@ export default function Game({
     const pushBuildCounts = () => {
       const g = buildGridRef.current;
       if (typeof window !== 'undefined') {
-        window.__wallsRef = countKind(g, 'wall');
-        window.__roofsRef = countKind(g, 'roof');
-        window.__floorsRef = countKind(g, 'floor');
+        gameStore.walls = countKind(g, 'wall');
+        gameStore.roofs = countKind(g, 'roof');
+        gameStore.floors = countKind(g, 'floor');
       }
       onStatsUpdate(statsPayload());
     };
@@ -1806,19 +1805,14 @@ export default function Game({
     window.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('contextmenu', handleContextMenu);
 
-    // RAFT-103: XP sink. Currently only logs in debug mode; Phase 3 wires the
-    // real progression system through window.__onXpFromGame.
+    // RAFT-103/301: XP sink — routed straight into the page-owned progression
+    // through the onXpGainRef callback (no bridge globals).
     const onXp = (amount: number) => {
-      if (typeof window === 'undefined') return;
       if (onXpGainRef.current) {
         onXpGainRef.current(amount);
         return;
       }
-      if (window.__onXpFromGame) {
-        window.__onXpFromGame(amount);
-        return;
-      }
-      if (window.__debugHitboxes) debug('[XP] +' + amount);
+      if (gameStore.debugHitboxes) debug('[XP] +' + amount);
     };
 
     const spawnDamageNumber = (x: number, y: number, value: number, color = '#FFD166') => {
@@ -1934,8 +1928,8 @@ export default function Game({
     const update = () => {
       if (gameOverRef.current || pausedRef.current) return;
       // ===== CLOUDS =====
-      if (isRaining && !window.__wasRaining) {
-        window.__wasRaining = true;
+      if (isRaining && !gameStore.wasRaining) {
+        gameStore.wasRaining = true;
         for (let cc = 0; cc < 6; cc++) {
           const fromLeft = cc % 2 === 0;
           clouds.push({
@@ -1949,8 +1943,8 @@ export default function Game({
           });
         }
       }
-      if (!isRaining && window.__wasRaining) {
-        window.__wasRaining = false;
+      if (!isRaining && gameStore.wasRaining) {
+        gameStore.wasRaining = false;
       }
       if (isRaining && clouds.length < 8 && time % 90 === 0) {
         const fromLeft = Math.random() < 0.5;
@@ -2065,9 +2059,9 @@ export default function Game({
           TUNABLE.starveDamage * DIFF.damageMult,
         );
       }
-      if (isRaining && window.__hasRainBarrelRef && barrelWater < 100) {
+      if (isRaining && gameStore.hasRainBarrel && barrelWater < 100) {
         barrelWater = Math.min(100, barrelWater + 0.05);
-        window.__barrelWater = barrelWater;
+        gameStore.barrelWater = barrelWater;
       }
       // RAFT-208: water purifier slowly produces clean water.
       if (
@@ -2076,7 +2070,7 @@ export default function Game({
         time % PURIFIER_PERIOD === 0
       ) {
         barrelWater = Math.min(100, barrelWater + 1);
-        window.__barrelWater = barrelWater;
+        gameStore.barrelWater = barrelWater;
       }
       // RAFT-405: fish drying rack cures a raw fish into a dried fish over time.
       if (
@@ -2123,9 +2117,9 @@ export default function Game({
       // Keep the HUD bridge counts in sync with the grid (no React setState here).
       if (typeof window !== 'undefined') {
         const g = buildGridRef.current;
-        window.__wallsRef = countKind(g, 'wall');
-        window.__roofsRef = countKind(g, 'roof');
-        window.__floorsRef = countKind(g, 'floor');
+        gameStore.walls = countKind(g, 'wall');
+        gameStore.roofs = countKind(g, 'roof');
+        gameStore.floors = countKind(g, 'floor');
       }
       // RAFT-203: an intact roof shelters the deck — small passive health regen.
       // RAFT-302: Survivor "Resilience" / Builder "Shelter" add flat regen.
@@ -2146,7 +2140,7 @@ export default function Game({
       // structures are torn off one by one, then game over.
       if (statsRef.current.raftHealth <= 0) {
         sinkTimer++;
-        if (sinkTimer === 1) window.__chestMessage = { text: 'THE RAFT IS SINKING!', time: 300 };
+        if (sinkTimer === 1) gameStore.chestMessage = { text: 'THE RAFT IS SINKING!', time: 300 };
         if (sinkTimer > SINK_WARNING_FRAMES && sinkTimer % SINK_TILE_LOSS_INTERVAL === 0) {
           const tiles = buildGridRef.current.tiles;
           if (tiles.length > 0) {
@@ -2253,8 +2247,8 @@ export default function Game({
       }
       lightningTimer++;
       // ===== CLOUDS =====
-      if (isRaining && !window.__wasRaining) {
-        window.__wasRaining = true;
+      if (isRaining && !gameStore.wasRaining) {
+        gameStore.wasRaining = true;
         for (let cc = 0; cc < 8; cc++) {
           const side = cc % 2;
           if (side === 0)
@@ -2289,8 +2283,8 @@ export default function Game({
             });
         }
       }
-      if (!isRaining && window.__wasRaining) {
-        window.__wasRaining = false;
+      if (!isRaining && gameStore.wasRaining) {
+        gameStore.wasRaining = false;
       }
       if (isRaining && clouds.length < 14 && time % 30 === 0) {
         const side = Math.floor(Math.random() * 2);
@@ -2542,7 +2536,7 @@ export default function Game({
       }
 
       if (
-        (typeof window !== 'undefined' ? window.__hasRodRef : false) &&
+        gameStore.hasRod &&
         keys.F &&
         fishingState === 'idle'
       ) {
@@ -2591,7 +2585,7 @@ export default function Game({
       // RAFT-302: Fighter "Might" boosts damage, "Swift" shortens cooldown.
       const spearDamage = weapon.damage * perkRef.current.damageMult;
       if (
-        (typeof window !== 'undefined' ? window.__hasSpearRef : false) &&
+        gameStore.hasSpear &&
         keys.Space &&
         attackTimer === 0
       ) {
@@ -2644,7 +2638,7 @@ export default function Game({
                 maxHealth,
               );
               statsRef.current.hunger = Math.min(100, statsRef.current.hunger + 40);
-              window.__chestMessage = { text: 'KRAKEN DEFEATED!', time: 180 };
+              gameStore.chestMessage = { text: 'KRAKEN DEFEATED!', time: 180 };
               grantKillRewards('kraken', kraken.x, kraken.y);
               kraken.state = 'dying';
               kraken.timer = 0;
@@ -2672,22 +2666,22 @@ export default function Game({
       }
 
       // RAFT-502: contextual hints — computed each frame, de-duped by id.
-      if (window.__hint && window.__hint.time > 0) window.__hint.time--;
+      if (gameStore.hint && gameStore.hint.time > 0) gameStore.hint.time--;
       // RAFT-505: mirror the nearest threat so the HUD can show a warning.
-      window.__threat = shark ? 'shark' : frogs.length > 0 ? 'frog' : null;
-      if (shark && window.__hasSpearRef)
+      gameStore.threat = shark ? 'shark' : frogs.length > 0 ? 'frog' : null;
+      if (shark && gameStore.hasSpear)
         showHint('attackShark', 'A shark is here — press ATTACK (SPACE)!');
-      else if (frogs.length > 0 && window.__hasSpearRef)
+      else if (frogs.length > 0 && gameStore.hasSpear)
         showHint('attackFrog', 'Frogs incoming — press ATTACK (SPACE)!');
       else if (statsRef.current.hunger < 30 && statsRef.current.fish + cookedFish + driedFish > 0)
         showHint('eat', 'You are hungry — tap the 🐟 button to eat.');
       else if (statsRef.current.thirst < 30)
         showHint('drink', 'You are thirsty — drink water (☔ barrel in the rain).');
-      else if (items.length > 0 && window.__hasHammerRef)
+      else if (items.length > 0 && gameStore.hasHammer)
         showHint('hook', 'Press HOOK (H) to reel in floating debris.');
-      else if (fishes.length > 0 && window.__hasRodRef)
+      else if (fishes.length > 0 && gameStore.hasRod)
         showHint('fish', 'Fish are near — press FISH (F) to cast your line.');
-      else if (!window.__hasSpearRef && statsRef.current.wood >= 3)
+      else if (!gameStore.hasSpear && statsRef.current.wood >= 3)
         showHint('craftSpear', 'Craft a Spear (C) so you can defend yourself.');
 
       // RAFT-104: sharks only appear from Day 4 and spawn faster as days pass.
@@ -3272,7 +3266,7 @@ export default function Game({
           grantExploreLoot(ISLAND_LOOT, isl.x + isl.width / 2, isl.y);
           onXp(XP_REWARDS.explore);
           if (typeof window !== 'undefined')
-            window.__chestMessage = { text: 'ISLAND DISCOVERED!', time: 180 };
+            gameStore.chestMessage = { text: 'ISLAND DISCOVERED!', time: 180 };
         }
         if (isl.life <= 0 || isl.x > 1000 || isl.x + isl.width < -200) islands.splice(i, 1);
       }
@@ -3292,7 +3286,7 @@ export default function Game({
           grantExploreLoot(CHEST_LOOT, ch.x, ch.y);
           onXp(XP_REWARDS.explore);
           if (typeof window !== 'undefined')
-            window.__chestMessage = { text: 'CHEST OPENED!', time: 180 };
+            gameStore.chestMessage = { text: 'CHEST OPENED!', time: 180 };
         }
         if (ch.life <= 0 || ch.x > 1000 || ch.x + ch.size < -200) chests.splice(i, 1);
       }
@@ -4288,7 +4282,7 @@ export default function Game({
       ctx.fill();
 
       // === FLOOR EXTENSIONS (widens the raft) ===
-      const _floors = (typeof window !== 'undefined' ? window.__floorsRef : 0) || 0;
+      const _floors = gameStore.floors;
 
       if (_floors > 0) {
         ctx.fillStyle = '#7A3B10';
@@ -4345,7 +4339,7 @@ export default function Game({
       ctx.stroke();
 
       // CAMPFIRE ON RAFT
-      const _hasCampfireDraw = typeof window !== 'undefined' ? window.__hasCampfireRef : false;
+      const _hasCampfireDraw = gameStore.hasCampfire;
       if (_hasCampfireDraw) {
         const _fx = rx + 15;
         const _fy = ry + rh - 15;
@@ -4872,7 +4866,7 @@ export default function Game({
 
       // === FISHING ROD (visible in player's hand) ===
       if (
-        (typeof window !== 'undefined' ? window.__hasRodRef : false) &&
+        gameStore.hasRod &&
         playerStateRef.current === 'standing'
       ) {
         const handX = player.x + player.width - 4;
@@ -5074,7 +5068,7 @@ export default function Game({
         ctx.fill();
       }
 
-      if ((typeof window !== 'undefined' ? window.__hasSpearRef : false) && attackTimer > 15) {
+      if (gameStore.hasSpear && attackTimer > 15) {
         ctx.strokeStyle = '#D2691E';
         ctx.lineWidth = 4;
         ctx.beginPath();
@@ -5279,7 +5273,7 @@ export default function Game({
         ctx.fillRect(0, 0, 800, 600);
 
         // CAMPFIRE LIGHT PIERCES NIGHT DARKNESS
-        const _hasFireL = typeof window !== 'undefined' ? window.__hasCampfireRef : false;
+        const _hasFireL = gameStore.hasCampfire;
         if (_hasFireL && darkness > 0.05) {
           const _rlx = raftRef.current.x + raftBobX + 15;
           const _rly = getRaftScreenY() + raftRef.current.height - 15;
@@ -5331,7 +5325,7 @@ export default function Game({
       }
 
       // FPS DISPLAY (only if enabled in settings)
-      if (typeof window !== 'undefined' && window.__showFps) {
+      if (typeof window !== 'undefined' && gameStore.showFps) {
         ctx.font = 'bold 10px Arial';
         ctx.textAlign = 'left';
         ctx.strokeStyle = '#000';
@@ -5470,7 +5464,7 @@ export default function Game({
       }
 
       // RAFT-102: F3 debug overlay — attack arc + enemy hitboxes.
-      if (typeof window !== 'undefined' && window.__debugHitboxes) {
+      if (typeof window !== 'undefined' && gameStore.debugHitboxes) {
         ctx.lineWidth = 1;
         ctx.strokeStyle = 'rgba(0, 255, 0, 0.9)';
         ctx.strokeRect(player.x, player.y, player.width, player.height);
@@ -5524,7 +5518,7 @@ export default function Game({
     gameLoop();
     return () => {
       cancelAnimationFrame(animationFrameId);
-      delete window.__setMove;
+      resetGameCommands();
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('bindingsChanged', onBindingsChanged);

@@ -1,12 +1,13 @@
 'use client';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { gameCommands } from '@/lib/store';
 
 // RAFT-504: on-screen touch controls for phones/tablets.
 //
 // A left-thumb virtual joystick drives movement (fed to the game through the
-// `window.__setMove` bridge so the canvas loop keeps a single source of truth),
-// while the right-hand buttons reuse the same synthetic-key handlers the HUD
-// buttons already use. Renders nothing on non-touch devices.
+// `gameCommands.setMove` bridge — RAFT-602 — so the canvas loop keeps a single
+// source of truth), while the right-hand buttons reuse the same synthetic-key
+// handlers the HUD buttons already use. Renders nothing on non-touch devices.
 type Props = {
   onAttack: () => void;
   onFish: () => void;
@@ -38,7 +39,7 @@ export default function TouchControls({ onAttack, onFish, onHook, onCraft }: Pro
   // Release every direction we own when the component unmounts (e.g. pause).
   useEffect(
     () => () => {
-      for (const d of DIRS) window.__setMove?.(d, false);
+      for (const d of DIRS) gameCommands.setMove?.(d, false);
     },
     [],
   );
@@ -49,7 +50,7 @@ export default function TouchControls({ onAttack, onFish, onHook, onCraft }: Pro
     for (const d of DIRS) {
       if (next[d] !== active.current[d]) {
         active.current[d] = next[d];
-        window.__setMove?.(d, next[d]);
+        gameCommands.setMove?.(d, next[d]);
       }
     }
   };

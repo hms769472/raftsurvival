@@ -1,11 +1,13 @@
 'use client';
 // RAFT-502 / L-25: renders the one-shot gameplay messages the canvas loop writes
-// to `window.__hint` (contextual hints) and `window.__chestMessage` (world
-// events such as "ISLAND DISCOVERED!"). The loop decrements each timer every
-// frame; this component only reads them, so it never owns game state.
+// to the game store (RAFT-602) — `gameStore.hint` (contextual hints) and
+// `gameStore.chestMessage` (world events such as "ISLAND DISCOVERED!"). The loop
+// decrements each timer every frame; this component only reads them, so it never
+// owns game state.
 
 import { useEffect, useState } from 'react';
 import type { ChestMessage } from '@/types/game-globals';
+import { gameStore } from '@/lib/store';
 
 type Active = { message: ChestMessage; kind: 'hint' | 'chest' };
 
@@ -15,16 +17,14 @@ export default function HintToast() {
   useEffect(() => {
     let raf = 0;
     const tick = () => {
-      if (typeof window !== 'undefined') {
-        const hint = window.__hint;
-        const chest = window.__chestMessage;
-        if (hint && hint.time > 0) {
-          setActive((prev) => (prev?.message === hint ? prev : { message: hint, kind: 'hint' }));
-        } else if (chest && chest.time > 0) {
-          setActive((prev) => (prev?.message === chest ? prev : { message: chest, kind: 'chest' }));
-        } else {
-          setActive(null);
-        }
+      const hint = gameStore.hint;
+      const chest = gameStore.chestMessage;
+      if (hint && hint.time > 0) {
+        setActive((prev) => (prev?.message === hint ? prev : { message: hint, kind: 'hint' }));
+      } else if (chest && chest.time > 0) {
+        setActive((prev) => (prev?.message === chest ? prev : { message: chest, kind: 'chest' }));
+      } else {
+        setActive(null);
       }
       raf = requestAnimationFrame(tick);
     };

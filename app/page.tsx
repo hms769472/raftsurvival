@@ -38,6 +38,7 @@ import {
   type WeaponTier,
 } from '@/lib/balance';
 import { matchAction, loadBindings } from '@/lib/controls';
+import { gameStore, gameCommands } from '@/lib/store';
 import {
   DEFAULT_PROGRESSION,
   addXp,
@@ -249,12 +250,11 @@ export default function Home() {
     return () => window.removeEventListener('resize', updateScale);
   }, []);
 
-  // Poll barrel water + threat from game (Game exposes them via window.__*).
+  // Poll barrel water + threat from the game store (RAFT-602).
   useEffect(() => {
     const interval = setInterval(() => {
-      const w = window.__barrelWater;
-      if (typeof w === 'number') setBarrelWater(w);
-      setThreat(window.__threat ?? null);
+      setBarrelWater(gameStore.barrelWater);
+      setThreat(gameStore.threat ?? null);
     }, 200);
     return () => clearInterval(interval);
   }, []);
@@ -405,22 +405,22 @@ export default function Home() {
   const expansions = Math.max(0, Math.round((raftWidth - BASE_RAFT_HEIGHT) / EXPAND_SIZE));
 
   const handleCook = () => {
-    window.__cookFish?.();
+    gameCommands.cookFish?.();
   };
   const handleEatCooked = () => {
-    window.__eatCookedFish?.();
+    gameCommands.eatCookedFish?.();
   };
   // RAFT-405: eat a dried fish (the drying rack's output).
   const handleEatDried = () => {
-    window.__eatDriedFish?.();
+    gameCommands.eatDriedFish?.();
   };
 
   const handleEat = () => {
-    window.__eatFishFromGame?.();
+    gameCommands.eatRawFish?.();
   };
 
   const handleDrink = () => {
-    window.__drinkWaterFromGame?.();
+    gameCommands.drinkWater?.();
   };
 
   const handleAttack = () => {

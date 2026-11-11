@@ -91,12 +91,12 @@ Legend: `Todo` · `In progress` · `Done` · `Partial` · `Skipped`
 | Key | Title | Status |
 |---|---|---|
 | RAFT-601 | Split `Game.tsx` into modules | Todo |
-| RAFT-602 | Replace `window.__*` globals with typed store/event bus | Todo |
-| RAFT-603 | Fix effect dependencies; don't restart loop on `gameOver` | Todo |
-| RAFT-604 | Remove `console.log` in hot paths; add debug logger | Todo |
+| RAFT-602 | Replace `window.__*` globals with typed store/event bus | Done |
+| RAFT-603 | Fix effect dependencies; don't restart loop on `gameOver` | Done |
+| RAFT-604 | Remove `console.log` in hot paths; add debug logger | Done |
 | RAFT-605 | Perf: replace 4.7 MB GIF / compress audio / lazy-load | Todo |
 | RAFT-606 | Unit tests for pure systems + Playwright smoke test | Todo |
-| RAFT-607 | Lint/format cleanup, remove dead code | Todo |
+| RAFT-607 | Lint/format cleanup, remove dead code | Done |
 
 ---
 

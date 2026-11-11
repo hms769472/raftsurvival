@@ -11,6 +11,7 @@ import {
   keyLabel,
   type ControlAction,
 } from '@/lib/controls';
+import { gameStore } from '@/lib/store';
 
 type Difficulty = 'easy' | 'normal' | 'hard';
 
@@ -54,14 +55,15 @@ export default function SettingsMenu({ onClose, onReplayTutorial }: SettingsMenu
     const data = { musicOn, sfxOn, showFps, difficulty };
     localStorage.setItem('raftSettings', JSON.stringify(data));
 
-    // Apply music toggle via global (BackgroundMusic reads this)
-    if (typeof window !== 'undefined') {
-      window.__musicEnabled = musicOn;
-      window.__sfxEnabled = sfxOn;
-      window.__showFps = showFps;
-      window.__difficulty = difficulty;
+    // RAFT-602: mirror into the typed store — the game loop reads these here
+    // (BackgroundMusic keeps listening for the event below).
+    gameStore.musicEnabled = musicOn;
+    gameStore.sfxEnabled = sfxOn;
+    gameStore.showFps = showFps;
+    gameStore.difficulty = difficulty;
 
-      // Dispatch event so BackgroundMusic can react immediately
+    // Dispatch event so BackgroundMusic can react immediately
+    if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('settingsChanged', { detail: data }));
     }
   }, [musicOn, sfxOn, showFps, difficulty]);
